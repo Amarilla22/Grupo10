@@ -23,43 +23,55 @@ CREATE TABLE eSocios.Socio (
     apellido varchar(50) NOT NULL,
     email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
     fecha_nac date NOT NULL,
-    telefono varchar(20),
-    telefono_emergencia varchar(20),
+    telefono varchar(20) CHECK (telefono LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'),
+    telefono_emergencia varchar(20) CHECK (telefono_emergencia LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'),
     obra_social varchar(50),
     nro_obra_social varchar(15),
-    estado varchar(10) NOT NULL CHECK (estado in ('Activo','Inactivo')),
-	constraint FKCat FOREIGN KEY (id_categoria) references eSocios.Categoria (id_categoria)
+	constraint FKSoc FOREIGN KEY (id_categoria) references eSocios.Categoria (id_categoria)
 );
 
 CREATE TABLE eSocios.GrupoFamiliar (
-    id_grupo int PRIMARY KEY,
+    id_grupo int,
     id_adulto_responsable int, 
-    descuento decimal(10,2)
+    descuento decimal(10,2),
+	constraint PKGruFam PRIMARY KEY (id_grupo,id_adulto_responsable)
 );
 
+CREATE TABLE eSocios.Tutor (
+    id_tutor int PRIMARY KEY,
+	id_grupo int,
+    nombre varchar(50) NOT NULL,
+    apellido varchar (50) NOT NULL,
+    email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
+    fecha_nac date NOT NULL, 
+    telefono varchar(20) NOT NULL CHECK (telefono LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'),
+    parentesco varchar(20) NOT NULL,
+    constraint FKTut FOREIGN KEY (id_grupo,id_tutor) references eSocios.GrupoFamiliar(id_grupo,id_adulto_responsable)
+)
+
 CREATE TABLE eSocios.Actividad (
-	id_actividad int PRIMARY KEY,
-	nombre nvarchar(50),
-	descuento decimal(5,2),
-	costo_mensual decimal(10,2)
+	id_actividad int PRIMARY KEY NOT NULL,
+	nombre nvarchar(50) NOT NULL,
+	descuento decimal(5,2) NOT NULL,
+	costo_mensual decimal(10,2) NOT NULL
 );
 
 CREATE TABLE eSocios.Realiza (
-	socio int,
-	id_actividad int,
-	constraint PKrealiza PRIMARY KEY (socio, id_actividad),
-	constraint FKrealiza FOREIGN KEY (socio) references eSocios.Socio (id_socio),
-	constraint FK2realiza FOREIGN KEY (id_actividad) references eSocios.Actividad (id_actividad)
+	socio int NOT NULL,
+	id_actividad int NOT NULL,
+	constraint PKRea PRIMARY KEY (socio, id_actividad),
+	constraint FKRea FOREIGN KEY (socio) references eSocios.Socio (id_socio),
+	constraint FK2Rea FOREIGN KEY (id_actividad) references eSocios.Actividad (id_actividad)
 );
 
 CREATE TABLE eSocios.Dia (
 	id_dia smallint PRIMARY KEY,
-	nombre varchar(20)
+	nombre varchar(20) CHECK (nombre IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'))
 );
 
 CREATE TABLE eSocios.Horario (
 	id_horario int PRIMARY KEY,
-	descripcion varchar(20)
+	hora time NOT NULL CHECK (hora BETWEEN '00:00:00' AND '23:59:59.9999999')
 );
 
 CREATE TABLE eSocios.ActividadDia (
@@ -92,15 +104,15 @@ CREATE TABLE eCobros.Factura
 );
 
 CREATE TABLE eCobros.Pileta (
-    id_Entrada int PRIMARY KEY,
-    id_Factura int,
-    id_Socio int,
-    fecha date,
-    monto decimal (10,2),
+    id_entrada int PRIMARY KEY NOT NULL,
+    id_factura int NOT NULL,
+    id_socio int NOT NULL,
+    fecha date NOT NULL,
+    monto decimal (10,2) NOT NULL,
     lluvia bit,
     tipo nvarchar(15),
-    constraint PKPil FOREIGN KEY (id_Factura) references eCobros.Factura(id_Factura),
-    constraint PK2Pil FOREIGN KEY (id_Socio) references eSocios.Socio(id_Socio)
+    constraint FKPil FOREIGN KEY (id_factura) references eCobros.Factura(id_factura),
+    constraint FK2Pil FOREIGN KEY (id_socio) references eSocios.Socio(id_socio)
 );
 
 CREATE TABLE eCobros.ItemFactura 
@@ -129,3 +141,5 @@ CREATE TABLE eCobros.Reembolso (
     motivo varchar(100) NOT NULL,
     fecha date NOT NULL
 );
+
+
