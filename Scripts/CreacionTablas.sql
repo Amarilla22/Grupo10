@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+<<<<<<< HEAD
+--prueba de github
+=======
+=======
 /*
 Entrega 4 - Creacion de la base de datos y objetos.
 Fecha de entrega: 23/05/2025
@@ -14,6 +19,7 @@ Integrantes:
 use master
 go
 
+>>>>>>> 53d603574e72d8df109736437e50cba31714962c
 CREATE DATABASE Com5600G10
 
 use Com5600G10
@@ -173,6 +179,9 @@ CREATE TABLE eCobros.Reembolso (
     motivo varchar(100) NOT NULL,
     fecha date NOT NULL
 );
+<<<<<<< HEAD
+>>>>>>> 20b041d7b7804972b57ab0771be191607392908d
+=======
 
 CREATE TABLE eAdministrativos.UsuarioAdministrativo (
 	id_usuario int identity(1,1) PRIMARY KEY,
@@ -184,3 +193,4 @@ CREATE TABLE eAdministrativos.UsuarioAdministrativo (
 );
 
 
+>>>>>>> 53d603574e72d8df109736437e50cba31714962c
