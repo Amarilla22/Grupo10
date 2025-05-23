@@ -1,10 +1,10 @@
-<<<<<<< HEAD
+
 use Com5600G10
 
 go
 
 
-CREATE PROCEDURE insertarSocio
+CREATE PROCEDURE eSocios.insertarSocio
     @id_grupo_familiar INT,
     @dni VARCHAR(15),
     @nombre VARCHAR(50),
@@ -91,28 +91,16 @@ GO
 
 
 
-
-CREATE PROCEDURE eSocios.CrearActividad
-    @nombre NVARCHAR(50),
-    @costo_mensual DECIMAL(10,2),
-    @dias VARCHAR(100) = NULL, -- Cadena de días separados por comas (ej: 'lunes,miercoles,viernes')
-    @horarios VARCHAR(500) = NULL -- Cadena de horarios en formato HH:MM separados por comas
-=======
-
-
-CREATE PROCEDURE eSocios.InscribirActividad
+CREATE PROCEDURE eSocios.inscribirActividad
     @id_socio INT,
     @id_actividad INT,
     @periodo VARCHAR(20) -- Formato: 'MM/YYYY'
->>>>>>> 95a2eaf2d73d9a09108a6096c4eb1a58ed2bfdaf
 AS
 BEGIN
     SET NOCOUNT ON;
     
     BEGIN TRY
         BEGIN TRANSACTION;
-        
-<<<<<<< HEAD
         DECLARE @id_actividad INT;
         
         -- Insertar la actividad (el ID se genera automáticamente por IDENTITY)
@@ -191,7 +179,6 @@ BEGIN
         
         COMMIT TRANSACTION;
         SELECT @id_actividad AS id_actividad;
-=======
         -- verificar si el socio ya está inscrito en la actividad
         IF EXISTS (SELECT 1 FROM eSocios.Realiza WHERE socio = @id_socio AND id_actividad = @id_actividad)
         BEGIN
@@ -211,7 +198,6 @@ BEGIN
         VALUES (NULL, 'Actividad', @costo, @periodo);
         
         COMMIT TRANSACTION;
->>>>>>> 95a2eaf2d73d9a09108a6096c4eb1a58ed2bfdaf
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0
@@ -220,13 +206,11 @@ BEGIN
         THROW;
     END CATCH
 END;
-<<<<<<< HEAD
-GO
-=======
+
 GO
 
 -- SP para generar factura con los descuentos correspondientes
-CREATE PROCEDURE eCobros.GenerarFactura
+CREATE PROCEDURE eCobros.generarFactura
     @id_socio INT,
     @periodo VARCHAR(20), -- formato: 'MM/YYYY'
     @fecha_emision DATE = NULL
@@ -354,7 +338,7 @@ END;
 GO
 
 -- procedimiento para aplicar recargo por segundo vencimiento (version modificada)
-CREATE PROCEDURE eCobros.AplicarRecargoSegundoVencimiento
+CREATE PROCEDURE eCobros.aplicarRecargoSegundoVencimiento
     @id_factura INT
 AS
 BEGIN
@@ -419,4 +403,4 @@ BEGIN
     END CATCH
 END;
 GO
->>>>>>> 95a2eaf2d73d9a09108a6096c4eb1a58ed2bfdaf
+
