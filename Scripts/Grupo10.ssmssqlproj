@@ -3,7 +3,26 @@
   <Items>
     <LogicalFolder Name="Connections" Type="2" Sorted="true">
       <Items>
+<<<<<<< HEAD
         <ConnectionNode Name="DESKTOP-JJHS3IE\SQLEXPRESS:DESKTOP-T4T2FOL\Pc">
+=======
+        <ConnectionNode Name="DESKTOP-CACMJS4\SQLEXPRESS:DESKTOP-JJHS3IE\santi">
+          <Created>2025-05-23T00:07:46.1275771-03:00</Created>
+          <Type>SQL</Type>
+          <Server>DESKTOP-CACMJS4\SQLEXPRESS</Server>
+          <UserName />
+          <Authentication>Windows Authentication</Authentication>
+          <InitialDB />
+          <LoginTimeout>30</LoginTimeout>
+          <TrustServerCertificate>True</TrustServerCertificate>
+          <HostNameInServerCertificate />
+          <EncryptionOption>True</EncryptionOption>
+          <ExecutionTimeout>0</ExecutionTimeout>
+          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
+          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
+        </ConnectionNode>
+        <ConnectionNode Name="DESKTOP-JJHS3IE\SQLEXPRESS:DESKTOP-JJHS3IE\santi">
+>>>>>>> 926f81bf5e72076b245830ff749730efbf75572f
           <Created>2025-05-22T23:36:27.5325434-03:00</Created>
           <Type>SQL</Type>
           <Server>DESKTOP-JJHS3IE\SQLEXPRESS</Server>
@@ -32,8 +51,13 @@
     <LogicalFolder Name="Queries" Type="0" Sorted="true">
       <Items>
         <FileNode Name="CreacionSP.sql">
+<<<<<<< HEAD
           <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
           <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
+=======
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-CACMJS4\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-CACMJS4\SQLEXPRESS</AssociatedConnSrvName>
+>>>>>>> 926f81bf5e72076b245830ff749730efbf75572f
           <AssociatedConnUserName />
           <FullPath>CreacionSP.sql</FullPath>
         </FileNode>
@@ -44,8 +68,13 @@
           <FullPath>CreacionTablas.sql</FullPath>
         </FileNode>
         <FileNode Name="JuegoPrueba.sql">
+<<<<<<< HEAD
           <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
           <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
+=======
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-CACMJS4\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-CACMJS4\SQLEXPRESS</AssociatedConnSrvName>
+>>>>>>> 926f81bf5e72076b245830ff749730efbf75572f
           <AssociatedConnUserName />
           <FullPath>JuegoPrueba.sql</FullPath>
         </FileNode>
