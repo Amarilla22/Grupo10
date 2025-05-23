@@ -23,6 +23,7 @@ CREATE TABLE eSocios.Socio (
     apellido varchar(50) NOT NULL,
     email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
     fecha_nac date NOT NULL,
+
     telefono varchar(20) CHECK (telefono LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'),
     telefono_emergencia varchar(20) CHECK (telefono_emergencia LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'),
     obra_social varchar(50),
@@ -66,12 +67,14 @@ CREATE TABLE eSocios.Realiza (
 
 CREATE TABLE eSocios.Dia (
 	id_dia smallint PRIMARY KEY,
-	nombre varchar(20) CHECK (nombre IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'))
+
+	nombre varchar(20) CHECK (nombre IN ('lunes', 'martes', 'miÃ©rcoles', 'jueves', 'viernes', 'sÃ¡bado', 'domingo'))
 );
 
 CREATE TABLE eSocios.Horario (
 	id_horario int PRIMARY KEY,
 	hora time NOT NULL CHECK (hora BETWEEN '00:00:00' AND '23:59:59.9999999')
+
 );
 
 CREATE TABLE eSocios.ActividadDia (
@@ -119,7 +122,7 @@ CREATE TABLE eCobros.ItemFactura
 (
     id_item int IDENTITY(1,1) PRIMARY KEY,
     id_factura int NOT NULL FOREIGN KEY references eCobros.Factura(id_factura),
-    concepto varchar(100) NOT NULL CHECK (concepto IN ('Membresía', 'Actividad', 'Pileta', 'Colonia', 'SUM')), 
+    concepto varchar(100) NOT NULL CHECK (concepto IN ('MembresÃ­a', 'Actividad', 'Pileta', 'Colonia', 'SUM')), 
     monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
     periodo varchar(20) NOT NULL,
 );
@@ -127,7 +130,7 @@ CREATE TABLE eCobros.ItemFactura
 CREATE TABLE eCobros.Pago (
     id_pago int PRIMARY KEY,
     id_factura int NOT NULL FOREIGN KEY references eCobros.Factura(id_factura),
-    medio_pago varchar(50) NOT NULL CHECK (medio_pago IN ('Visa', 'MasterCard', 'Tarjeta Naranja', 'Pago Fácil', 'Rapipago', 'Transferencia Mercado Pago')),
+    medio_pago varchar(50) NOT NULL CHECK (medio_pago IN ('Visa', 'MasterCard', 'Tarjeta Naranja', 'Pago FÃ¡cil', 'Rapipago', 'Transferencia Mercado Pago')),
     monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
     fecha date NOT NULL,
     estado varchar(20) NOT NULL CHECK (estado IN ('Completado', 'Reembolsado')),
