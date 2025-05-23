@@ -91,7 +91,7 @@ GO
 
 
 
-CREATE PROCEDURE eSocios.sp_CrearActividad
+CREATE PROCEDURE eSocios.CrearActividad
     @nombre NVARCHAR(50),
     @costo_mensual DECIMAL(10,2),
     @dias VARCHAR(100) = NULL, -- Cadena de días separados por comas (ej: 'lunes,miercoles,viernes')
