@@ -1,3 +1,19 @@
+/*
+Entrega 4 - Creacion de la base de datos y objetos.
+Fecha de entrega: 23/05/2025
+Nro. Comision: 5600
+Grupo: 10
+Materia: Bases de datos aplicada
+Integrantes:
+- Moggi Rocio , DNI: 45576066
+- Amarilla Santiago, DNI: 45481129 
+- Martinez Galo, DNI: 43094675
+- Fleita Thiago , DNI: 45233264
+*/
+
+use master
+go
+
 CREATE DATABASE Com5600G10
 
 use Com5600G10
@@ -7,25 +23,29 @@ create schema eSocios
 go
 create schema eCobros
 go
+create schema eAdministrativos
+go
 
 CREATE TABLE eSocios.Categoria ( 
-	id_categoria int PRIMARY KEY,
-    nombre varchar(50),
-    costo_mensual decimal(10,2),
+	id_categoria int identity(1,1) PRIMARY KEY,
+    nombre varchar(50) NOT NULL,
+    costo_mensual decimal(10,2) NOT NULL
 );
 
 CREATE TABLE eSocios.Socio (
     id_socio int identity(1,1) PRIMARY KEY,
     id_grupo_familiar int, 
     id_categoria int NOT NULL,
-    dni varchar(15) NOT NULL UNIQUE CHECK (TRY_CAST(dni as INT) > 0), 
+    dni varchar(8) NOT NULL UNIQUE CHECK (TRY_CAST(dni as INT) > 0), 
     nombre varchar(50) NOT NULL,
     apellido varchar(50) NOT NULL,
     email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
     fecha_nac date NOT NULL,
 
-    telefono varchar(20) CHECK (telefono LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'),
-    telefono_emergencia varchar(20) CHECK (telefono_emergencia LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'),
+    telefono varchar(10) CHECK (
+    LEN(telefono) = 10 AND telefono NOT LIKE '%[^0-9]%'),
+    telefono_emergencia varchar(10) CHECK (
+    LEN(telefono_emergencia) = 10 AND telefono_emergencia NOT LIKE '%[^0-9]%'),
     obra_social varchar(50),
     nro_obra_social varchar(15),
 	constraint FKSoc FOREIGN KEY (id_categoria) references eSocios.Categoria (id_categoria)
@@ -33,27 +53,28 @@ CREATE TABLE eSocios.Socio (
 
 CREATE TABLE eSocios.GrupoFamiliar (
     id_grupo int,
-    id_adulto_responsable int, 
+    id_adulto_responsable int,  
     descuento decimal(10,2),
-	constraint PKGruFam PRIMARY KEY (id_grupo,id_adulto_responsable)
+	constraint PKGruFam PRIMARY KEY (id_grupo,id_adulto_responsable),
+	constraint FKGruFam FOREIGN KEY (id_adulto_responsable) references eSocios.Socio (id_socio)
 );
 
 CREATE TABLE eSocios.Tutor (
     id_tutor int PRIMARY KEY,
-	id_grupo int,
+	id_socio int,
     nombre varchar(50) NOT NULL,
     apellido varchar (50) NOT NULL,
     email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
     fecha_nac date NOT NULL, 
-    telefono varchar(20) NOT NULL CHECK (telefono LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'),
+    telefono varchar(10) NOT NULL CHECK (
+    LEN(telefono) = 10 AND telefono NOT LIKE '%[^0-9]%'),
     parentesco varchar(20) NOT NULL,
-    constraint FKTut FOREIGN KEY (id_grupo,id_tutor) references eSocios.GrupoFamiliar(id_grupo,id_adulto_responsable)
-)
+    constraint FKTut FOREIGN KEY (id_socio) references eSocios.Socio(id_socio)
+);
 
 CREATE TABLE eSocios.Actividad (
-	id_actividad int PRIMARY KEY NOT NULL,
+	id_actividad int identity (1,1) PRIMARY KEY NOT NULL,
 	nombre nvarchar(50) NOT NULL,
-	descuento decimal(5,2) NOT NULL,
 	costo_mensual decimal(10,2) NOT NULL
 );
 
@@ -67,7 +88,6 @@ CREATE TABLE eSocios.Realiza (
 
 CREATE TABLE eSocios.Dia (
 	id_dia smallint PRIMARY KEY,
-
 	nombre varchar(20) CHECK (nombre IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'))
 );
 
@@ -95,7 +115,7 @@ CREATE TABLE eSocios.ActividadHorario (
 
 CREATE TABLE eCobros.Factura 
 (
-    id_factura int PRIMARY KEY,
+    id_factura int identity (1,1) PRIMARY KEY,
     id_socio int NOT NULL FOREIGN KEY references eSocios.Socio(id_socio),
     fecha_emision date,
     fecha_venc_1 date,
@@ -106,23 +126,32 @@ CREATE TABLE eCobros.Factura
     descuentos tinyint CHECK (descuentos BETWEEN 0 AND 100)
 );
 
-CREATE TABLE eCobros.Pileta (
-    id_entrada int PRIMARY KEY NOT NULL,
-    id_factura int NOT NULL,
-    id_socio int NOT NULL,
-    fecha date NOT NULL,
-    monto decimal (10,2) NOT NULL,
-    lluvia bit,
-    tipo nvarchar(15),
-    constraint FKPil FOREIGN KEY (id_factura) references eCobros.Factura(id_factura),
-    constraint FK2Pil FOREIGN KEY (id_socio) references eSocios.Socio(id_socio)
-);
+--datos del invitado del socio a la pileta
+CREATE TABLE eSocios.Invitado (
+	id_invitado int identity(1,1) PRIMARY KEY,
+	id_socio int NOT NULL,
+	nombre varchar(50) NOT NULL,
+	apellido varchar(50) NOT NULL,
+	dni varchar(8) NOT NULL UNIQUE CHECK (TRY_CAST(dni as INT) > 0),
+	constraint FKInv FOREIGN KEY (id_socio) references eSocios.Socio(id_socio)
+)
+
+CREATE TABLE eCobros.PiletaInvitado (
+	id_entrada int identity(1,1) PRIMARY KEY,
+	id_invitado int NOT NULL,
+	id_factura int NOT NULL,
+	fecha date NOT NULL,
+	monto decimal(10,2) NOT NULL CHECK (monto >= 0),
+	lluvia bit,
+	constraint FKInv FOREIGN KEY (id_invitado) references eSocios.Invitado(id_invitado),
+	constraint FKFact FOREIGN KEY (id_factura) references eCobros.Factura (id_factura)
+)
 
 CREATE TABLE eCobros.ItemFactura 
 (
     id_item int IDENTITY(1,1) PRIMARY KEY,
     id_factura int NOT NULL FOREIGN KEY references eCobros.Factura(id_factura),
-    concepto varchar(100) NOT NULL CHECK (concepto IN ('Membresía', 'Actividad', 'Pileta', 'Colonia', 'SUM')), 
+    concepto varchar(100) NOT NULL CHECK (concepto IN ('membresia', 'actividad', 'pileta', 'colonia', 'sum')), 
     monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
     periodo varchar(20) NOT NULL,
 );
@@ -130,10 +159,10 @@ CREATE TABLE eCobros.ItemFactura
 CREATE TABLE eCobros.Pago (
     id_pago int PRIMARY KEY,
     id_factura int NOT NULL FOREIGN KEY references eCobros.Factura(id_factura),
-    medio_pago varchar(50) NOT NULL CHECK (medio_pago IN ('Visa', 'MasterCard', 'Tarjeta Naranja', 'Pago Fácil', 'Rapipago', 'Transferencia Mercado Pago')),
+    medio_pago varchar(50) NOT NULL CHECK (medio_pago IN ('visa', 'masterCard', 'tarjeta naranja', 'pago facil', 'rapipago', 'mercado pago')),
     monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
     fecha date NOT NULL,
-    estado varchar(20) NOT NULL CHECK (estado IN ('Completado', 'Reembolsado')),
+    estado varchar(20) NOT NULL CHECK (estado IN ('completado', 'reembolsado')),
     debito_auto bit NOT NULL
 );
 
@@ -143,6 +172,15 @@ CREATE TABLE eCobros.Reembolso (
     monto decimal(10, 2)  NOT NULL CHECK (monto >= 0),
     motivo varchar(100) NOT NULL,
     fecha date NOT NULL
+);
+
+CREATE TABLE eAdministrativos.UsuarioAdministrativo (
+	id_usuario int identity(1,1) PRIMARY KEY,
+	rol varchar (50),
+	nombre_usuario nvarchar(50),
+	clave nvarchar(50),
+	fecha_vigencia_clave date,
+	ultimo_cambio_clave date
 );
 
 
