@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
---prueba de github
-=======
-=======
 /*
 Entrega 4 - Creacion de la base de datos y objetos.
 Fecha de entrega: 23/05/2025
@@ -18,8 +13,10 @@ Integrantes:
 
 use master
 go
+--borrar
+use Aplicada
+go
 
->>>>>>> 53d603574e72d8df109736437e50cba31714962c
 CREATE DATABASE Com5600G10
 
 use Com5600G10
@@ -47,20 +44,17 @@ CREATE TABLE eSocios.Socio (
     apellido varchar(50) NOT NULL,
     email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
     fecha_nac date NOT NULL,
-
-    telefono varchar(10) CHECK (
-    LEN(telefono) = 10 AND telefono NOT LIKE '%[^0-9]%'),
-    telefono_emergencia varchar(10) CHECK (
-    LEN(telefono_emergencia) = 10 AND telefono_emergencia NOT LIKE '%[^0-9]%'),
+    telefono varchar(10) CHECK (LEN(telefono) = 10 AND telefono NOT LIKE '%[^0-9]%'),
+    telefono_emergencia varchar(10) CHECK (LEN(telefono_emergencia) = 10 AND telefono_emergencia NOT LIKE '%[^0-9]%'),
     obra_social varchar(50),
     nro_obra_social varchar(15),
-	constraint FKSoc FOREIGN KEY (id_categoria) references eSocios.Categoria (id_categoria)
+	constraint FKSoc FOREIGN KEY (id_categoria) references eSocios.Categoria (id_categoria)--no hace falta
 );
 
 CREATE TABLE eSocios.GrupoFamiliar (
-    id_grupo int,
+    id_grupo int identity(1,1),
     id_adulto_responsable int,  
-    descuento decimal(10,2),
+    descuento decimal(10,2),--ver
 	constraint PKGruFam PRIMARY KEY (id_grupo,id_adulto_responsable),
 	constraint FKGruFam FOREIGN KEY (id_adulto_responsable) references eSocios.Socio (id_socio)
 );
@@ -94,29 +88,23 @@ CREATE TABLE eSocios.Realiza (
 
 CREATE TABLE eSocios.Dia (
 	id_dia smallint PRIMARY KEY,
-	nombre varchar(20) CHECK (nombre IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'))
+	nombre varchar(10) NOT NULL CHECK (nombre IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'))
 );
 
 CREATE TABLE eSocios.Horario (
 	id_horario int PRIMARY KEY,
-	hora time NOT NULL CHECK (hora BETWEEN '00:00:00' AND '23:59:59.9999999')
+	hora  TIME(0) NOT NULL
 
 );
 
-CREATE TABLE eSocios.ActividadDia (
-    id_actividad int,
-    id_dia smallint,
-    constraint PKActDia PRIMARY KEY (id_actividad, id_dia),
-    constraint FKActDia FOREIGN KEY (id_actividad) references eSocios.Actividad(id_actividad),
-    constraint FK2ActDia FOREIGN KEY (id_dia) references eSocios.Dia(id_dia)
-);
-
-CREATE TABLE eSocios.ActividadHorario (
-    id_actividad int,
-    id_horario int,
-    constraint PKActHor PRIMARY KEY (id_actividad, id_horario),
-    constraint FKActHor FOREIGN KEY (id_actividad) references eSocios.Actividad(id_actividad),
-    constraint FK2ActHor FOREIGN KEY (id_horario) references eSocios.Horario(id_horario)
+CREATE TABLE eSocios.ActividadHorarioDia (
+    id_actividad INT NOT NULL,
+    id_dia SMALLINT NOT NULL,
+    id_horario INT NOT NULL,
+    CONSTRAINT PK_ActividadHorarioDia PRIMARY KEY (id_actividad, id_dia, id_horario),
+    CONSTRAINT FK_ActividadHorarioDia_Actividad FOREIGN KEY (id_actividad) REFERENCES eSocios.Actividad(id_actividad),
+    CONSTRAINT FK_ActividadHorarioDia_Dia FOREIGN KEY (id_dia) REFERENCES eSocios.Dia(id_dia),
+    CONSTRAINT FK_ActividadHorarioDia_Horario FOREIGN KEY (id_horario) REFERENCES eSocios.Horario(id_horario)
 );
 
 CREATE TABLE eCobros.Factura 
@@ -179,9 +167,6 @@ CREATE TABLE eCobros.Reembolso (
     motivo varchar(100) NOT NULL,
     fecha date NOT NULL
 );
-<<<<<<< HEAD
->>>>>>> 20b041d7b7804972b57ab0771be191607392908d
-=======
 
 CREATE TABLE eAdministrativos.UsuarioAdministrativo (
 	id_usuario int identity(1,1) PRIMARY KEY,
@@ -191,6 +176,3 @@ CREATE TABLE eAdministrativos.UsuarioAdministrativo (
 	fecha_vigencia_clave date,
 	ultimo_cambio_clave date
 );
-
-
->>>>>>> 53d603574e72d8df109736437e50cba31714962c
