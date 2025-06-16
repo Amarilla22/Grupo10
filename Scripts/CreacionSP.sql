@@ -687,4 +687,334 @@ BEGIN
         THROW;
     END CATCH
 END;
+go
+
+
+CREATE OR ALTER PROCEDURE eCobros.sp_CargarPago
+    @id_pago INT,
+    @id_factura INT,
+    @medio_pago VARCHAR(50),
+    @monto DECIMAL(10,2),
+    @fecha DATE = NULL,
+    @debito_auto BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- Variables para validaciones
+    DECLARE @estado_factura VARCHAR(20);
+    DECLARE @total_factura DECIMAL(10,2);
+    DECLARE @total_pagado DECIMAL(10,2) = 0;
+    DECLARE @fecha_pago DATE;
+    
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        
+        -- Si no se proporciona fecha, usar la fecha actual
+        IF @fecha IS NULL
+            SET @fecha_pago = GETDATE();
+        ELSE
+            SET @fecha_pago = @fecha;
+        
+        -- Validar que la factura existe y obtener su estado y total
+        SELECT @estado_factura = estado, 
+               @total_factura = total
+        FROM eCobros.Factura 
+        WHERE id_factura = @id_factura;
+        
+        -- Si no se encontró la factura, @estado_factura será NULL
+        IF @estado_factura IS NULL
+        BEGIN
+            THROW 50001, 'La factura especificada no existe.', 1;
+            RETURN;
+        END
+        
+        -- Validar que la factura no esté anulada
+        IF @estado_factura = 'anulada'
+        BEGIN
+            THROW 50001, 'No se puede registrar un pago para una factura anulada.', 1;
+            RETURN;
+        END
+        
+        -- Validar que la factura no esté ya completamente pagada
+        IF @estado_factura = 'pagada'
+        BEGIN
+            THROW 50001, 'La factura ya se encuentra completamente pagada.', 1;
+            RETURN;
+        END
+        
+        -- Calcular el total ya pagado para esta factura
+        SELECT @total_pagado = ISNULL(SUM(monto), 0)
+        FROM eCobros.Pago 
+        WHERE id_factura = @id_factura 
+          AND estado = 'completado';
+        
+        -- Validar que el monto del pago no exceda el saldo pendiente
+        IF (@total_pagado + @monto) > @total_factura
+        BEGIN
+            DECLARE @saldo_pendiente DECIMAL(10,2) = @total_factura - @total_pagado;
+            DECLARE @mensaje_error VARCHAR(200) = 
+                'El monto del pago (' + CAST(@monto AS VARCHAR(20)) + 
+                ') excede el saldo pendiente de la factura (' + 
+                CAST(@saldo_pendiente AS VARCHAR(20)) + ').';
+            THROW 50001, @mensaje_error, 1);
+            RETURN;
+        END
+        
+        -- Validar que el id_pago no exista (si se proporciona)
+        IF EXISTS (SELECT 1 FROM eCobros.Pago WHERE id_pago = @id_pago)
+        BEGIN
+            THROW 50001, 'Ya existe un pago con el ID especificado.',1);
+            RETURN;
+        END
+        
+        -- Insertar el pago
+        INSERT INTO eCobros.Pago (
+            id_pago, 
+            id_factura, 
+            medio_pago, 
+            monto, 
+            fecha, 
+            estado, 
+            debito_auto
+        )
+        VALUES (
+            @id_pago,
+            @id_factura,
+            @medio_pago,
+            @monto,
+            @fecha_pago,
+            'completado',
+            @debito_auto
+        );
+        
+        -- Actualizar el estado de la factura si está completamente pagada
+        IF (@total_pagado + @monto) = @total_factura
+        BEGIN
+            UPDATE eCobros.Factura 
+            SET estado = 'pagada' 
+            WHERE id_factura = @id_factura;
+        END
+        
+        COMMIT TRANSACTION;
+        
+        -- Mensaje de éxito
+        PRINT 'Pago registrado exitosamente.';
+        PRINT 'ID Pago: ' + CAST(@id_pago AS VARCHAR(10));
+        PRINT 'Monto: $' + CAST(@monto AS VARCHAR(20));
+        PRINT 'Medio de pago: ' + @medio_pago;
+        
+        IF (@total_pagado + @monto) = @total_factura
+            PRINT 'Factura marcada como PAGADA completamente.';
+        ELSE
+        BEGIN
+            DECLARE @saldo_restante DECIMAL(10,2) = @total_factura - (@total_pagado + @monto);
+            PRINT 'Saldo restante: $' + CAST(@saldo_restante AS VARCHAR(20));
+        END
+        
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+        
+        -- Capturar y mostrar el error
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+        
+        THROW @ErrorSeverity, @ErrorMessage, @ErrorState;
+    END CATCH
+END
+
+
+
+
+CREATE PROCEDURE eCobros.sp_InsertarReembolso --El reembolso no actualiza factura, CONSULTAR CON LOS CHICOS
+    @id_reembolso INT,
+    @id_pago INT,
+    @monto DECIMAL(10,2),
+    @motivo VARCHAR(100),
+    @fecha DATE = NULL -- Si no se proporciona, usa la fecha actual
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        
+        -- Si no se proporciona fecha, usar la fecha actual
+        IF @fecha IS NULL
+            SET @fecha = GETDATE();
+        
+        -- Validar que el ID de reembolso no exista
+        IF EXISTS (SELECT 1 FROM eCobros.Reembolso WHERE id_reembolso = @id_reembolso)
+        BEGIN
+            THROW 50001, 'El ID de reembolso ya existe', 1;
+        END
+        
+        -- Validar que el pago existe y está completado
+        IF NOT EXISTS (
+            SELECT 1 
+            FROM eCobros.Pago 
+            WHERE id_pago = @id_pago AND estado = 'completado'
+        )
+        BEGIN
+            THROW 50002, 'El pago no existe o no está en estado completado', 1;
+        END
+        
+        -- Obtener el monto del pago original
+        DECLARE @monto_pago DECIMAL(10,2);
+        SELECT @monto_pago = monto 
+        FROM eCobros.Pago 
+        WHERE id_pago = @id_pago;
+        
+        -- Validar que el monto del reembolso no sea mayor al monto del pago
+        IF @monto > @monto_pago
+        BEGIN
+            THROW 50003, 'El monto del reembolso no puede ser mayor al monto del pago original', 1;
+        END
+        
+        -- Calcular el total de reembolsos existentes para este pago
+        DECLARE @total_reembolsos DECIMAL(10,2) = 0;
+        SELECT @total_reembolsos = ISNULL(SUM(monto), 0)
+        FROM eCobros.Reembolso 
+        WHERE id_pago = @id_pago;
+        
+        -- Validar que el total de reembolsos (incluyendo el nuevo) no supere el monto del pago
+        IF (@total_reembolsos + @monto) > @monto_pago
+        BEGIN
+            THROW 50004, 'El total de reembolsos no puede superar el monto del pago original', 1;
+        END
+        
+        -- Validar parámetros de entrada
+        IF @monto <= 0
+        BEGIN
+            THROW 50005, 'El monto del reembolso debe ser mayor a 0', 1;
+        END
+        
+        IF LTRIM(RTRIM(@motivo)) = ''
+        BEGIN
+            THROW 50006, 'El motivo del reembolso es obligatorio', 1;
+        END
+        
+        -- Insertar el reembolso
+        INSERT INTO eCobros.Reembolso (id_reembolso, id_pago, monto, motivo, fecha)
+        VALUES (@id_reembolso, @id_pago, @monto, @motivo, @fecha);
+        
+        -- Si el reembolso es total, actualizar el estado del pago a 'reembolsado'
+        IF (@total_reembolsos + @monto) = @monto_pago
+        BEGIN
+            UPDATE eCobros.Pago 
+            SET estado = 'reembolsado' 
+            WHERE id_pago = @id_pago;
+        END
+        
+        COMMIT TRANSACTION;
+        
+        PRINT 'Reembolso insertado correctamente';
+        SELECT 'SUCCESS' AS Result, @id_reembolso AS ReembolsoId;
+        
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+            
+        -- Capturar y relanzar el error
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+        
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END;
 GO
+
+
+CREATE PROCEDURE eCobros.sp_AnularPago --Actualiza factura
+    @id_pago INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        
+        -- Validar que el pago existe y está en estado 'completado'
+        IF NOT EXISTS (
+            SELECT 1 
+            FROM eCobros.Pago 
+            WHERE id_pago = @id_pago AND estado = 'completado'
+        )
+        BEGIN
+            RAISERROR('El pago no existe o no está en estado completado.', 16, 1);
+            RETURN;
+        END
+        
+        -- Validar que no tenga reembolsos procesados
+        IF EXISTS (
+            SELECT 1 
+            FROM eCobros.Reembolso 
+            WHERE id_pago = @id_pago
+        )
+        BEGIN
+            RAISERROR('No se puede anular un pago que tiene reembolsos asociados.', 16, 1);
+            RETURN;
+        END
+        
+        -- Realizar el borrado lógico cambiando el estado
+        UPDATE eCobros.Pago 
+        SET estado = 'anulado'
+        WHERE id_pago = @id_pago;
+        
+        -- Obtener datos de la factura para actualizar su estado si es necesario
+        DECLARE @id_factura INT;
+        DECLARE @total_factura DECIMAL(10,2);
+        DECLARE @total_pagado DECIMAL(10,2) = 0;
+        
+        SELECT @id_factura = id_factura 
+        FROM eCobros.Pago 
+        WHERE id_pago = @id_pago;
+        
+        SELECT @total_factura = total 
+        FROM eCobros.Factura 
+        WHERE id_factura = @id_factura;
+        
+        -- Calcular el total pagado (excluyendo pagos anulados)
+        SELECT @total_pagado = ISNULL(SUM(monto), 0)
+        FROM eCobros.Pago 
+        WHERE id_factura = @id_factura 
+          AND estado = 'completado';
+        
+        -- Actualizar estado de la factura
+        IF @total_pagado = 0
+        BEGIN
+            -- Si no hay pagos, vuelve a pendiente
+            UPDATE eCobros.Factura 
+            SET estado = 'pendiente' 
+            WHERE id_factura = @id_factura;
+        END
+        ELSE IF @total_pagado < @total_factura
+        BEGIN
+            -- Si hay pagos parciales, vuelve a pendiente
+            UPDATE eCobros.Factura 
+            SET estado = 'pendiente' 
+            WHERE id_factura = @id_factura;
+        END
+        -- Si @total_pagado = @total_factura, mantiene estado 'pagada'
+        
+        COMMIT TRANSACTION;
+        
+        PRINT 'Pago anulado exitosamente.';
+        PRINT 'ID Pago: ' + CAST(@id_pago AS VARCHAR(10));
+        
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+        
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+        
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END
