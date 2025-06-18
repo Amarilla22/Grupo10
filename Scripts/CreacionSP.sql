@@ -1018,3 +1018,97 @@ BEGIN
         RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
     END CATCH
 END
+
+CREATE PROCEDURE eCobros.sp_BorradoLogicoReembolso
+    @id_reembolso INT,
+    @motivo_baja VARCHAR(100) = 'ELIMINADO LOGICAMENTE'
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        
+        -- Validar que el reembolso existe y no está marcado como eliminado
+        IF NOT EXISTS (
+            SELECT 1 
+            FROM eCobros.Reembolso 
+            WHERE id_reembolso = @id_reembolso 
+            AND motivo NOT LIKE 'ELIMINADO:%'
+        )
+        BEGIN
+            THROW 50010, 'El reembolso no existe o ya está eliminado lógicamente', 1;
+        END
+        
+        -- Obtener información del reembolso
+        DECLARE @id_pago INT;
+        DECLARE @monto_reembolso DECIMAL(10,2);
+        DECLARE @motivo_original VARCHAR(100);
+        
+        SELECT @id_pago = id_pago, @monto_reembolso = monto, @motivo_original = motivo
+        FROM eCobros.Reembolso 
+        WHERE id_reembolso = @id_reembolso;
+        
+        -- Marcar como eliminado modificando el motivo
+        UPDATE eCobros.Reembolso 
+        SET motivo = 'ELIMINADO: ' + @motivo_original
+        WHERE id_reembolso = @id_reembolso;
+        
+        -- Recalcular el total de reembolsos activos para el pago (excluyendo eliminados)
+        DECLARE @total_reembolsos_activos DECIMAL(10,2) = 0;
+        SELECT @total_reembolsos_activos = ISNULL(SUM(monto), 0)
+        FROM eCobros.Reembolso 
+        WHERE id_pago = @id_pago AND motivo NOT LIKE 'ELIMINADO:%';
+        
+        -- Obtener el monto del pago original
+        DECLARE @monto_pago DECIMAL(10,2);
+        SELECT @monto_pago = monto 
+        FROM eCobros.Pago 
+        WHERE id_pago = @id_pago;
+        
+        -- Actualizar el estado del pago según los reembolsos activos
+        IF @total_reembolsos_activos = 0
+        BEGIN
+            -- No hay reembolsos activos, volver a estado completado
+            UPDATE eCobros.Pago 
+            SET estado = 'completado' 
+            WHERE id_pago = @id_pago;
+        END
+        ELSE IF @total_reembolsos_activos < @monto_pago
+        BEGIN
+            -- Reembolso parcial, mantener como completado
+            UPDATE eCobros.Pago 
+            SET estado = 'completado' 
+            WHERE id_pago = @id_pago;
+        END
+        ELSE IF @total_reembolsos_activos = @monto_pago
+        BEGIN
+            -- Reembolso total, mantener como reembolsado
+            UPDATE eCobros.Pago 
+            SET estado = 'reembolsado' 
+            WHERE id_pago = @id_pago;
+        END
+        
+        COMMIT TRANSACTION;
+        
+        PRINT 'Reembolso eliminado lógicamente de forma correcta';
+        SELECT 
+            'SUCCESS' AS Result, 
+            @id_reembolso AS ReembolsoId,
+            @monto_reembolso AS MontoReembolso,
+            @total_reembolsos_activos AS TotalReembolsosActivos,
+            @monto_pago AS MontoPago;
+        
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+            
+        -- Capturar y relanzar el error
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
+        DECLARE @ErrorState INT = ERROR_STATE();
+        
+        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+    END CATCH
+END;
+GO
