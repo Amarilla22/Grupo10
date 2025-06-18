@@ -49,6 +49,7 @@ CREATE TABLE eSocios.Socio (
     LEN(telefono_emergencia) = 10 AND telefono_emergencia NOT LIKE '%[^0-9]%'),
     obra_social varchar(50),
     nro_obra_social varchar(15),
+	activo BIT DEFAULT 1 CHECK (activo IN (0,1)),
 	constraint FKSoc FOREIGN KEY (id_categoria) references eSocios.Categoria (id_categoria)
 );
 

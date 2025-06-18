@@ -3,7 +3,7 @@
   <Items>
     <LogicalFolder Name="Connections" Type="2" Sorted="true">
       <Items>
-        <ConnectionNode Name="DESKTOP-CACMJS4\SQLEXPRESS:DESKTOP-CACMJS4\Galo">
+        <ConnectionNode Name="DESKTOP-CACMJS4\SQLEXPRESS:GCX-PC\Usuario">
           <Created>2025-05-23T00:07:46.1275771-03:00</Created>
           <Type>SQL</Type>
           <Server>DESKTOP-CACMJS4\SQLEXPRESS</Server>
@@ -18,10 +18,25 @@
           <ConnectionProtocol>NotSpecified</ConnectionProtocol>
           <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
         </ConnectionNode>
-        <ConnectionNode Name="DESKTOP-JJHS3IE\SQLEXPRESS:DESKTOP-CACMJS4\Galo">
+        <ConnectionNode Name="DESKTOP-JJHS3IE\SQLEXPRESS:GCX-PC\Usuario">
           <Created>2025-05-22T23:36:27.5325434-03:00</Created>
           <Type>SQL</Type>
           <Server>DESKTOP-JJHS3IE\SQLEXPRESS</Server>
+          <UserName />
+          <Authentication>Windows Authentication</Authentication>
+          <InitialDB />
+          <LoginTimeout>30</LoginTimeout>
+          <TrustServerCertificate>True</TrustServerCertificate>
+          <HostNameInServerCertificate />
+          <EncryptionOption>True</EncryptionOption>
+          <ExecutionTimeout>0</ExecutionTimeout>
+          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
+          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
+        </ConnectionNode>
+        <ConnectionNode Name="GCX-PC\SQLEXPRESS:GCX-PC\Usuario">
+          <Created>2025-06-18T00:02:09.2215908-03:00</Created>
+          <Type>SQL</Type>
+          <Server>GCX-PC\SQLEXPRESS</Server>
           <UserName />
           <Authentication>Windows Authentication</Authentication>
           <InitialDB />
@@ -38,14 +53,14 @@
     <LogicalFolder Name="Queries" Type="0" Sorted="true">
       <Items>
         <FileNode Name="CreacionSP.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-CACMJS4\SQLEXPRESS:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>DESKTOP-CACMJS4\SQLEXPRESS</AssociatedConnSrvName>
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:GCX-PC\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>GCX-PC\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>CreacionSP.sql</FullPath>
         </FileNode>
         <FileNode Name="CreacionTablas.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-CACMJS4\SQLEXPRESS:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>DESKTOP-CACMJS4\SQLEXPRESS</AssociatedConnSrvName>
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:GCX-PC\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>GCX-PC\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>CreacionTablas.sql</FullPath>
         </FileNode>

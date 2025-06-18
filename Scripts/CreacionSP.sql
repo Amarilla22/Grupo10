@@ -1582,3 +1582,174 @@ BEGIN
     END CATCH
 END;
 GO
+CREATE PROCEDURE eAdministrativos.CrearUsuario
+	@rol VARCHAR(50),
+	@nombre_usuario NVARCHAR(50),
+	@clave NVARCHAR(50),
+	@vigencia_dias INT = 90 --cada 3 meses caduca contraseña
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		--Verifico si existe un usuario con el mismo nombre
+		IF EXISTS (
+			SELECT 1
+			FROM eAdministrativos.UsuarioAdministrativo
+			WHERE nombre_usuario = @nombre_usuario
+		)
+			THROW 50001, 'El nombre de usuario ya existe.',1;
+
+			--Insercion nuevo usuario
+			INSERT INTO eAdministrativos.UsuarioAdministrativo (
+				rol, nombre_usuario, clave, fecha_vigencia_clave, ultimo_cambio_clave
+			)
+			VALUES (
+				@rol, @nombre_usuario, @clave, DATEADD(DAY, @vigencia_dias, GETDATE()), GETDATE()
+			); --dateadd le suma @vigencia_dias a la fecha de hoy, dando como result la fecha vigencia (cuando caduca) 
+
+			PRINT 'Usuario creado con éxito.';
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
+		THROW 50000, @msg, 1;
+	END CATCH
+END;
+GO
+
+
+
+CREATE PROCEDURE eAdministrativos.ModificarUsuario
+	@id_usuario INT,
+	@rol VARCHAR(50),
+	@nombre_usuario NVARCHAR(50),
+	@clave NVARCHAR (50),
+	@vigencia_dias INT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+	--Validacion existencia
+	IF NOT EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario)
+		THROW 50001, 'No existe usuario con ese ID.', 1;
+
+	--Validar que el nuevo nombre no esté en uso
+	IF EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE nombre_usuario = @nombre_usuario AND id_usuario <> @id_usuario)
+		THROW 50002, 'El nombre de usuario ya está en uso.', 1;
+
+	--Actualizacion
+	UPDATE eAdministrativos.UsuarioAdministrativo
+		SET 
+			rol = @rol,
+			nombre_usuario = @nombre_usuario,
+			clave = @clave,
+			fecha_vigencia_clave = DATEADD(DAY,@vigencia_dias,GETDATE()),
+			ultimo_cambio_clave = GETDATE()
+		WHERE id_usuario = @id_usuario;
+
+		PRINT 'Usuario modificado con éxito.';
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
+		THROW 50000, @msg, 1;
+	END CATCH
+END;
+GO
+
+
+CREATE PROCEDURE eAdministrativos.EliminarUsuario
+	@id_usuario INT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+	--Validar existencia usuario
+		IF NOT EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario)
+			THROW 50001, 'El usuario no existe.', 1;
+
+
+	--Eliminar
+	DELETE FROM eAdministrativos.UsuarioAdministrativo
+	WHERE id_usuario = @id_usuario
+
+	PRINT 'Usuario eliminado con éxito.';
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
+		THROW 50000, @msg, 1;
+	END CATCH
+END;
+GO
+
+
+
+CREATE PROCEDURE eSocios.EliminarSocio
+	@id_socio INT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio AND activo = 1)
+			THROW 50001, 'El socio no existe o ya fue dado de baja.', 1;
+
+		--borrado logico
+		UPDATE eSocios.Socio
+		SET activo = 0
+		WHERE id_socio = @id_socio;
+
+		PRINT 'Socio eliminado con éxito.';
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
+		THROW 50000, @msg, 1;
+	END CATCH
+END;
+GO
+
+
+CREATE PROCEDURE eSocios.ModificarSocio
+	@id_socio INT,
+	@nombre VARCHAR(50),
+	@apellido VARCHAR(50),
+    @email NVARCHAR(100),
+    @fecha_nac DATE,
+    @telefono VARCHAR(20),
+    @telefono_emergencia VARCHAR(20),
+    @obra_social VARCHAR(50),
+    @nro_obra_social VARCHAR(15)
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		--Validar que el socio exista y esté activo
+		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio AND activo = 1)
+			THROW 50001, 'El socio no existe o esta inactivo.', 1;
+
+		--Validar formato email
+		IF @email NOT LIKE '%@%.%'
+			THROW 50002, 'Formato de email invalido.', 1;
+
+		--Actualizacion
+		UPDATE eSocios.Socio
+		SET
+			nombre = @nombre,
+			apellido = @apellido,
+			email = @email,
+			telefono = @telefono,
+			telefono_emergencia = @telefono_emergencia,
+			obra_social = @obra_social,
+			nro_obra_social = @nro_obra_social
+		WHERE id_socio = @id_socio;
+
+		PRINT 'Socio modificado con éxito.';
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
+		THROW 50000, @msg, 1;
+	END CATCH
+END;
+GO
