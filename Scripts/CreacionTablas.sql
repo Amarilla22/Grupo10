@@ -61,7 +61,7 @@ CREATE TABLE eSocios.GrupoFamiliar (
 );
 
 CREATE TABLE eSocios.Tutor (
-    id_tutor int PRIMARY KEY,
+    id_tutor int identity(1,1) PRIMARY KEY,
 	id_socio int,
     nombre varchar(50) NOT NULL,
     apellido varchar (50) NOT NULL,
@@ -127,26 +127,6 @@ CREATE TABLE eCobros.Factura
     descuentos tinyint CHECK (descuentos BETWEEN 0 AND 100)
 );
 
---datos del invitado del socio a la pileta
-CREATE TABLE eSocios.Invitado (
-	id_invitado int identity(1,1) PRIMARY KEY,
-	id_socio int NOT NULL,
-	nombre varchar(50) NOT NULL,
-	apellido varchar(50) NOT NULL,
-	dni varchar(8) NOT NULL UNIQUE CHECK (TRY_CAST(dni as INT) > 0),
-	constraint FKInv FOREIGN KEY (id_socio) references eSocios.Socio(id_socio)
-)
-
-CREATE TABLE eCobros.PiletaInvitado (
-	id_entrada int identity(1,1) PRIMARY KEY,
-	id_invitado int NOT NULL,
-	id_factura int NOT NULL,
-	fecha date NOT NULL,
-	monto decimal(10,2) NOT NULL CHECK (monto >= 0),
-	lluvia bit,
-	constraint FKInv FOREIGN KEY (id_invitado) references eSocios.Invitado(id_invitado),
-	constraint FKFact FOREIGN KEY (id_factura) references eCobros.Factura (id_factura)
-)
 
 CREATE TABLE eCobros.ItemFactura 
 (
@@ -156,6 +136,18 @@ CREATE TABLE eCobros.ItemFactura
     monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
     periodo varchar(20) NOT NULL,
 );
+CREATE TABLE eCobros.EntradaPileta (
+	id_entrada int identity(1,1) PRIMARY KEY,
+	id_socio int NOT NULL,
+	id_item_factura int NOT NULL,
+	fecha date NOT NULL,
+	monto decimal(10,2) NOT NULL CHECK (monto >= 0),
+	tipo varchar(8) NOT NULL CHECK (tipo IN ('socio', 'invitado')),
+	lluvia bit,
+	constraint FKInv FOREIGN KEY (id_socio) references eSocios.Socio(id_socio),
+	constraint FKFact FOREIGN KEY (id_item_factura) references eCobros.ItemFactura(id_item)
+)
+
 
 CREATE TABLE eCobros.Pago (
     id_pago int PRIMARY KEY,
