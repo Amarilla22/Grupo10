@@ -663,6 +663,79 @@ BEGIN
 END;
 GO
 
+CREATE PROCEDURE eSocios.ModificarTutor
+	@id_tutor INT,
+    @nombre VARCHAR(50),
+    @apellido VARCHAR(50),
+    @email NVARCHAR(100),
+    @fecha_nac DATE,
+    @telefono VARCHAR(10),
+    @parentesco VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+-- Verificar que el tutor exista
+		IF NOT EXISTS (
+			SELECT 1 
+			FROM eSocios.Tutor 
+			WHERE id_tutor = @id_tutor
+		)
+        THROW 60001, 'El tutor especificado no existe', 1;
+
+-- Verificar que no se repita el email con otro tutor
+		IF EXISTS (
+			SELECT 1 
+			FROM eSocios.Tutor 
+			WHERE email = @email AND id_tutor <> @id_tutor
+		)
+        THROW 60002, 'Ya existe otro tutor con ese email', 1;
+-- Actualizar datos del tutor
+		UPDATE eSocios.Tutor
+		SET nombre = @nombre,
+			apellido = @apellido,
+			email = @email,
+			fecha_nac = @fecha_nac,
+			telefono = @telefono,
+			parentesco = @parentesco
+		WHERE id_tutor = @id_tutor;
+
+	END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        THROW 50000, @ErrorMessage, 1;
+    END CATCH
+END;
+GO
+
+CREATE PROCEDURE eSocios.EliminarTutor
+    @id_tutor INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+	BEGIN TRY
+-- Verificar que el tutor exista
+        IF NOT EXISTS (
+			SELECT 1 
+			FROM eSocios.Tutor 
+			WHERE id_tutor = @id_tutor
+		)
+        THROW 60101, 'El tutor especificado no existe', 1;
+
+-- Eliminar tutor
+        DELETE FROM eSocios.Tutor
+        WHERE id_tutor = @id_tutor;
+
+	END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        THROW 60100, @ErrorMessage, 1;
+    END CATCH
+END;
+GO
+
 -- SP para generar factura con los descuentos correspondientes
 CREATE PROCEDURE eCobros.generarFactura
     @id_socio INT,
