@@ -855,9 +855,9 @@ BEGIN
             'actividad', 
             a.costo_mensual, 
             @periodo
-        FROM eSocios.SocioActividad sa
+        FROM eSocios.Realiza sa
         JOIN eSocios.Actividad a ON sa.id_actividad = a.id_actividad
-        WHERE sa.id_socio = @id_socio;
+        WHERE sa.socio = @id_socio;
         
         -- calcular total de actividades
         SELECT @total_actividades = ISNULL(SUM(monto), 0)

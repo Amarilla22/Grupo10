@@ -423,4 +423,3 @@ FROM eCobros.Factura
 WHERE id_factura = 2;
 GO
 
-
