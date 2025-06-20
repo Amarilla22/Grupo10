@@ -42,7 +42,6 @@ CREATE TABLE eSocios.Socio (
     apellido varchar(50) NOT NULL,
     email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
     fecha_nac date NOT NULL,
-
     telefono varchar(10) CHECK (
     LEN(telefono) = 10 AND telefono NOT LIKE '%[^0-9]%'),
     telefono_emergencia varchar(10) CHECK (

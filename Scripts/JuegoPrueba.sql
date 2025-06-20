@@ -422,3 +422,5 @@ SELECT id_factura, estado AS estado_factura, total
 FROM eCobros.Factura
 WHERE id_factura = 2;
 GO
+
+
