@@ -156,7 +156,7 @@ CREATE TABLE eCobros.Pago (
     medio_pago varchar(50) NOT NULL CHECK (medio_pago IN ('visa', 'masterCard', 'tarjeta naranja', 'pago facil', 'rapipago', 'mercado pago')),
     monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
     fecha date NOT NULL,
-    estado varchar(20) NOT NULL CHECK (estado IN ('completado', 'reembolsado')),
+    estado varchar(20) NOT NULL CHECK (estado IN ('completado', 'reembolsado', 'anulado')),
     debito_auto bit NOT NULL
 );
 

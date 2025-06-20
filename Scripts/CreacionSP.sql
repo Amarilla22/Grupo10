@@ -1,4 +1,17 @@
 
+/*
+Entrega 4 - Creacion de store procedures.
+Fecha de entrega: 20/06/2025
+Nro. Comision: 5600
+Grupo: 10
+Materia: Bases de datos aplicada
+Integrantes:
+- Moggi Rocio , DNI: 45576066
+- Amarilla Santiago, DNI: 45481129 
+- Martinez Galo, DNI: 43094675
+- Fleita Thiago , DNI: 45233264
+*/
+
 use Com5600G10
 
 go
@@ -60,6 +73,77 @@ BEGIN
 END
 GO
 
+
+CREATE PROCEDURE eSocios.EliminarSocio
+	@id_socio INT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio AND activo = 1)
+			THROW 50001, 'El socio no existe o ya fue dado de baja.', 1;
+
+		--borrado logico
+		UPDATE eSocios.Socio
+		SET activo = 0
+		WHERE id_socio = @id_socio;
+
+		PRINT 'Socio eliminado con éxito.';
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
+		THROW 50000, @msg, 1;
+	END CATCH
+END; --------T
+GO
+
+
+CREATE PROCEDURE eSocios.ModificarSocio
+	@id_socio INT,
+	@nombre VARCHAR(50),
+	@apellido VARCHAR(50),
+    @email NVARCHAR(100),
+    @fecha_nac DATE,
+    @telefono VARCHAR(20),
+    @telefono_emergencia VARCHAR(20),
+    @obra_social VARCHAR(50),
+    @nro_obra_social VARCHAR(15)
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		--Validar que el socio exista y esté activo
+		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio AND activo = 1)
+			THROW 50001, 'El socio no existe o esta inactivo.', 1;
+
+		--Validar formato email
+		IF @email NOT LIKE '%@%.%'
+			THROW 50002, 'Formato de email invalido.', 1;
+
+		--Actualizacion
+		UPDATE eSocios.Socio
+		SET
+			nombre = @nombre,
+			apellido = @apellido,
+			email = @email,
+			telefono = @telefono,
+			telefono_emergencia = @telefono_emergencia,
+			obra_social = @obra_social,
+			nro_obra_social = @nro_obra_social
+		WHERE id_socio = @id_socio;
+
+		PRINT 'Socio modificado con éxito.';
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
+		THROW 50000, @msg, 1;
+	END CATCH
+END; --------T
+GO
+
+
 --Verifica que exista un socio con el ID dado y luego de eso le asigna la actividad indicada por ID en la tabla Realiza
 
 CREATE PROCEDURE eSocios.asignarActividad
@@ -91,7 +175,7 @@ END;
 GO
 
 
-
+-- ""inscribe un socio a una actividad""
 CREATE PROCEDURE eSocios.inscribirActividad
     @id_socio INT,
     @id_actividad INT,
@@ -344,40 +428,6 @@ GO
 
 
 
-
--- inscribe un socio a una actividad
-CREATE PROCEDURE eSocios.InscribirActividad
-    @id_socio INT,
-    @id_actividad INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-    
-    BEGIN TRY
-        -- valida que el socio y la actividad existen
-        IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
-            THROW 50001, 'El socio especificado no existe', 1;
-            
-        IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
-            THROW 50002, 'La actividad especificada no existe', 1;
-            
-        -- inserta relación
-        INSERT INTO eSocios.Realiza (socio, id_actividad)
-        VALUES (@id_socio, @id_actividad);
-    END TRY
-    BEGIN CATCH
-        IF ERROR_NUMBER() = 2627 -- violacion de clave primaria
-            THROW 50003, 'El socio ya está asignado a esta actividad', 1;
-        ELSE
-        BEGIN
-            DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-            THROW 50000, @ErrorMessage, 1;
-        END
-    END CATCH
-END;
-GO
-
-
 -- elimina a un socio de una actividad
 CREATE PROCEDURE eSocios.DesinscribirActividad
     @id_socio INT,
@@ -399,8 +449,6 @@ BEGIN
     END CATCH
 END;
 GO
-
-
 
 
 
@@ -660,81 +708,84 @@ BEGIN
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         THROW 50000, @ErrorMessage, 1;
     END CATCH
-END;
+END; --------------
 GO
 
-CREATE PROCEDURE eSocios.ModificarTutor
-	@id_tutor INT,
-    @nombre VARCHAR(50),
-    @apellido VARCHAR(50),
-    @email NVARCHAR(100),
-    @fecha_nac DATE,
-    @telefono VARCHAR(10),
-    @parentesco VARCHAR(20)
-AS
-BEGIN
-    SET NOCOUNT ON;
 
-    BEGIN TRY
--- Verificar que el tutor exista
-		IF NOT EXISTS (
-			SELECT 1 
-			FROM eSocios.Tutor 
-			WHERE id_tutor = @id_tutor
-		)
-        THROW 60001, 'El tutor especificado no existe', 1;
+	CREATE PROCEDURE eSocios.ModificarTutor
+		@id_tutor INT,
+		@nombre VARCHAR(50),
+		@apellido VARCHAR(50),
+		@email NVARCHAR(100),
+		@fecha_nac DATE,
+		@telefono VARCHAR(10),
+		@parentesco VARCHAR(20)
+	AS
+	BEGIN
+		SET NOCOUNT ON;
 
--- Verificar que no se repita el email con otro tutor
-		IF EXISTS (
-			SELECT 1 
-			FROM eSocios.Tutor 
-			WHERE email = @email AND id_tutor <> @id_tutor
-		)
-        THROW 60002, 'Ya existe otro tutor con ese email', 1;
--- Actualizar datos del tutor
-		UPDATE eSocios.Tutor
-		SET nombre = @nombre,
-			apellido = @apellido,
-			email = @email,
-			fecha_nac = @fecha_nac,
-			telefono = @telefono,
-			parentesco = @parentesco
-		WHERE id_tutor = @id_tutor;
+		BEGIN TRY
+	-- Verificar que el tutor exista
+			IF NOT EXISTS (
+				SELECT 1 
+				FROM eSocios.Tutor 
+				WHERE id_tutor = @id_tutor
+			)
+			THROW 60001, 'El tutor especificado no existe', 1;
 
-	END TRY
-    BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW 50000, @ErrorMessage, 1;
-    END CATCH
-END;
-GO
+	-- Verificar que no se repita el email con otro tutor
+			IF EXISTS (
+				SELECT 1 
+				FROM eSocios.Tutor 
+				WHERE email = @email AND id_tutor <> @id_tutor
+			)
+			THROW 60002, 'Ya existe otro tutor con ese email', 1;
+	-- Actualizar datos del tutor
+			UPDATE eSocios.Tutor
+			SET nombre = @nombre,
+				apellido = @apellido,
+				email = @email,
+				fecha_nac = @fecha_nac,
+				telefono = @telefono,
+				parentesco = @parentesco
+			WHERE id_tutor = @id_tutor;
 
-CREATE PROCEDURE eSocios.EliminarTutor
-    @id_tutor INT
-AS
-BEGIN
-    SET NOCOUNT ON;
+		END TRY
+		BEGIN CATCH
+			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+			THROW 50000, @ErrorMessage, 1;
+		END CATCH
+	END; ----R
+	GO
 
-	BEGIN TRY
--- Verificar que el tutor exista
-        IF NOT EXISTS (
-			SELECT 1 
-			FROM eSocios.Tutor 
-			WHERE id_tutor = @id_tutor
-		)
-        THROW 60101, 'El tutor especificado no existe', 1;
 
--- Eliminar tutor
-        DELETE FROM eSocios.Tutor
-        WHERE id_tutor = @id_tutor;
+	CREATE PROCEDURE eSocios.EliminarTutor
+		@id_tutor INT
+	AS
+	BEGIN
+		SET NOCOUNT ON;
 
-	END TRY
-    BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW 60100, @ErrorMessage, 1;
-    END CATCH
-END;
-GO
+		BEGIN TRY
+	-- Verificar que el tutor exista
+			IF NOT EXISTS (
+				SELECT 1 
+				FROM eSocios.Tutor 
+				WHERE id_tutor = @id_tutor
+			)
+			THROW 60101, 'El tutor especificado no existe', 1;
+
+	-- Eliminar tutor
+			DELETE FROM eSocios.Tutor
+			WHERE id_tutor = @id_tutor;
+
+		END TRY
+		BEGIN CATCH
+			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+			THROW 60100, @ErrorMessage, 1;
+		END CATCH
+	END; ----R
+	GO
+
 
 -- SP para generar factura con los descuentos correspondientes
 CREATE PROCEDURE eCobros.generarFactura
@@ -859,7 +910,7 @@ BEGIN
         
         THROW;
     END CATCH
-END;
+END; --galo
 GO
 
 
@@ -927,7 +978,7 @@ BEGIN
     BEGIN CATCH
         THROW;
     END CATCH
-END;
+END; --galo
 GO
 
 
@@ -966,7 +1017,7 @@ BEGIN
 
         THROW;
     END CATCH
-END;
+END; --galo
 GO
 
 
@@ -1110,8 +1161,10 @@ BEGIN
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         THROW;
     END CATCH
-END;
+END; --galo
 GO
+
+
 
 CREATE PROCEDURE eCobros.AnularEntradaPileta
     @id_entrada INT,
@@ -1230,7 +1283,86 @@ BEGIN
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();     
         THROW;
     END CATCH
-END;
+END; --galo
+GO
+
+
+
+use j_prueba
+go
+
+CREATE PROCEDURE eSocios.ModificarTutor
+	@id_tutor INT,
+    @nombre VARCHAR(50),
+    @apellido VARCHAR(50),
+    @email NVARCHAR(100),
+    @fecha_nac DATE,
+    @telefono VARCHAR(10),
+    @parentesco VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+-- Verificar que el tutor exista
+		IF NOT EXISTS (
+			SELECT 1 
+			FROM eSocios.Tutor 
+			WHERE id_tutor = @id_tutor
+		)
+        THROW 60001, 'El tutor especificado no existe', 1;
+
+-- Verificar que no se repita el email con otro tutor
+		IF EXISTS (
+			SELECT 1 
+			FROM eSocios.Tutor 
+			WHERE email = @email AND id_tutor <> @id_tutor
+		)
+        THROW 60002, 'Ya existe otro tutor con ese email', 1;
+-- Actualizar datos del tutor
+		UPDATE eSocios.Tutor
+		SET nombre = @nombre,
+			apellido = @apellido,
+			email = @email,
+			fecha_nac = @fecha_nac,
+			telefono = @telefono,
+			parentesco = @parentesco
+		WHERE id_tutor = @id_tutor;
+
+	END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        THROW 50000, @ErrorMessage, 1;
+    END CATCH
+END; ----R
+GO
+
+
+CREATE PROCEDURE eSocios.EliminarTutor
+    @id_tutor INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+	BEGIN TRY
+-- Verificar que el tutor exista
+        IF NOT EXISTS (
+			SELECT 1 
+			FROM eSocios.Tutor 
+			WHERE id_tutor = @id_tutor
+		)
+        THROW 60101, 'El tutor especificado no existe', 1;
+
+-- Eliminar tutor
+        DELETE FROM eSocios.Tutor
+        WHERE id_tutor = @id_tutor;
+
+	END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        THROW 60100, @ErrorMessage, 1;
+    END CATCH
+END; ----R
 GO
 
 CREATE OR ALTER PROCEDURE eCobros.CargarPago
@@ -1300,14 +1432,14 @@ BEGIN
                 'El monto del pago (' + CAST(@monto AS VARCHAR(20)) + 
                 ') excede el saldo pendiente de la factura (' + 
                 CAST(@saldo_pendiente AS VARCHAR(20)) + ').';
-            THROW 50001, @mensaje_error, 1);
+            THROW 50001, @mensaje_error, 1;
             RETURN;
         END
         
         -- Validar que el id_pago no exista (si se proporciona)
         IF EXISTS (SELECT 1 FROM eCobros.Pago WHERE id_pago = @id_pago)
         BEGIN
-            THROW 50001, 'Ya existe un pago con el ID especificado.',1);
+            THROW 50001, 'Ya existe un pago con el ID especificado.', 1;
             RETURN;
         END
         
@@ -1365,111 +1497,12 @@ BEGIN
         DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
         DECLARE @ErrorState INT = ERROR_STATE();
         
-        THROW @ErrorSeverity, @ErrorMessage, @ErrorState;
+        THROW 50000, @ErrorMessage, @ErrorState;
     END CATCH
 END
+go
 
 
-
-
-CREATE PROCEDURE eCobros.InsertarReembolso --El reembolso no actualiza factura, CONSULTAR CON LOS CHICOS
-    @id_reembolso INT,
-    @id_pago INT,
-    @monto DECIMAL(10,2),
-    @motivo VARCHAR(100),
-    @fecha DATE = NULL -- Si no se proporciona, usa la fecha actual
-AS
-BEGIN
-    SET NOCOUNT ON;
-    BEGIN TRY
-        BEGIN TRANSACTION;
-        
-        -- Si no se proporciona fecha, usar la fecha actual
-        IF @fecha IS NULL
-            SET @fecha = GETDATE();
-        
-        -- Validar que el ID de reembolso no exista
-        IF EXISTS (SELECT 1 FROM eCobros.Reembolso WHERE id_reembolso = @id_reembolso)
-        BEGIN
-            THROW 50001, 'El ID de reembolso ya existe', 1;
-        END
-        
-        -- Validar que el pago existe y está completado
-        IF NOT EXISTS (
-            SELECT 1 
-            FROM eCobros.Pago 
-            WHERE id_pago = @id_pago AND estado = 'completado'
-        )
-        BEGIN
-            THROW 50002, 'El pago no existe o no está en estado completado', 1;
-        END
-        
-        -- Obtener el monto del pago original
-        DECLARE @monto_pago DECIMAL(10,2);
-        SELECT @monto_pago = monto 
-        FROM eCobros.Pago 
-        WHERE id_pago = @id_pago;
-        
-        -- Validar que el monto del reembolso no sea mayor al monto del pago
-        IF @monto > @monto_pago
-        BEGIN
-            THROW 50003, 'El monto del reembolso no puede ser mayor al monto del pago original', 1;
-        END
-        
-        -- Calcular el total de reembolsos existentes para este pago
-        DECLARE @total_reembolsos DECIMAL(10,2) = 0;
-        SELECT @total_reembolsos = ISNULL(SUM(monto), 0)
-        FROM eCobros.Reembolso 
-        WHERE id_pago = @id_pago;
-        
-        -- Validar que el total de reembolsos (incluyendo el nuevo) no supere el monto del pago
-        IF (@total_reembolsos + @monto) > @monto_pago
-        BEGIN
-            THROW 50004, 'El total de reembolsos no puede superar el monto del pago original', 1;
-        END
-        
-        -- Validar parámetros de entrada
-        IF @monto <= 0
-        BEGIN
-            THROW 50005, 'El monto del reembolso debe ser mayor a 0', 1;
-        END
-        
-        IF LTRIM(RTRIM(@motivo)) = ''
-        BEGIN
-            THROW 50006, 'El motivo del reembolso es obligatorio', 1;
-        END
-        
-        -- Insertar el reembolso
-        INSERT INTO eCobros.Reembolso (id_reembolso, id_pago, monto, motivo, fecha)
-        VALUES (@id_reembolso, @id_pago, @monto, @motivo, @fecha);
-        
-        -- Si el reembolso es total, actualizar el estado del pago a 'reembolsado'
-        IF (@total_reembolsos + @monto) = @monto_pago
-        BEGIN
-            UPDATE eCobros.Pago 
-            SET estado = 'reembolsado' 
-            WHERE id_pago = @id_pago;
-        END
-        
-        COMMIT TRANSACTION;
-        
-        PRINT 'Reembolso insertado correctamente';
-        SELECT 'SUCCESS' AS Result, @id_reembolso AS ReembolsoId;
-        
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-            
-        -- Capturar y relanzar el error
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
-        DECLARE @ErrorState INT = ERROR_STATE();
-        
-        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
-    END CATCH
-END;
-GO
 
 
 CREATE PROCEDURE eCobros.AnularPago --Actualiza factura
@@ -1653,8 +1686,11 @@ BEGIN
         
         RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
     END CATCH
-END;
+END; ----R
 GO
+
+
+
 CREATE PROCEDURE eAdministrativos.CrearUsuario
 	@rol VARCHAR(50),
 	@nombre_usuario NVARCHAR(50),
@@ -1687,9 +1723,8 @@ BEGIN
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
-END;
+END;--------T
 GO
-
 
 
 CREATE PROCEDURE eAdministrativos.ModificarUsuario
@@ -1727,7 +1762,7 @@ BEGIN
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
-END;
+END; --------T
 GO
 
 
@@ -1753,76 +1788,6 @@ BEGIN
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
-END;
+END; --------T
 GO
 
-
-
-CREATE PROCEDURE eSocios.EliminarSocio
-	@id_socio INT
-AS
-BEGIN
-	SET NOCOUNT ON;
-
-	BEGIN TRY
-		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio AND activo = 1)
-			THROW 50001, 'El socio no existe o ya fue dado de baja.', 1;
-
-		--borrado logico
-		UPDATE eSocios.Socio
-		SET activo = 0
-		WHERE id_socio = @id_socio;
-
-		PRINT 'Socio eliminado con éxito.';
-	END TRY
-	BEGIN CATCH
-		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
-		THROW 50000, @msg, 1;
-	END CATCH
-END;
-GO
-
-
-CREATE PROCEDURE eSocios.ModificarSocio
-	@id_socio INT,
-	@nombre VARCHAR(50),
-	@apellido VARCHAR(50),
-    @email NVARCHAR(100),
-    @fecha_nac DATE,
-    @telefono VARCHAR(20),
-    @telefono_emergencia VARCHAR(20),
-    @obra_social VARCHAR(50),
-    @nro_obra_social VARCHAR(15)
-AS
-BEGIN
-	SET NOCOUNT ON;
-
-	BEGIN TRY
-		--Validar que el socio exista y esté activo
-		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio AND activo = 1)
-			THROW 50001, 'El socio no existe o esta inactivo.', 1;
-
-		--Validar formato email
-		IF @email NOT LIKE '%@%.%'
-			THROW 50002, 'Formato de email invalido.', 1;
-
-		--Actualizacion
-		UPDATE eSocios.Socio
-		SET
-			nombre = @nombre,
-			apellido = @apellido,
-			email = @email,
-			telefono = @telefono,
-			telefono_emergencia = @telefono_emergencia,
-			obra_social = @obra_social,
-			nro_obra_social = @nro_obra_social
-		WHERE id_socio = @id_socio;
-
-		PRINT 'Socio modificado con éxito.';
-	END TRY
-	BEGIN CATCH
-		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
-		THROW 50000, @msg, 1;
-	END CATCH
-END;
-GO
