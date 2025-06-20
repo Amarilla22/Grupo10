@@ -32,6 +32,8 @@ CREATE TABLE eSocios.Categoria (
     nombre varchar(50) NOT NULL,
     costo_mensual decimal(10,2) NOT NULL
 );
+GO
+
 
 CREATE TABLE eSocios.Socio (
     id_socio int identity(1,1) PRIMARY KEY,
@@ -51,6 +53,8 @@ CREATE TABLE eSocios.Socio (
 	activo BIT DEFAULT 1 CHECK (activo IN (0,1)),
 	constraint FKSoc FOREIGN KEY (id_categoria) references eSocios.Categoria (id_categoria)
 );
+GO
+
 
 CREATE TABLE eSocios.GrupoFamiliar (
     id_grupo int,
@@ -59,6 +63,8 @@ CREATE TABLE eSocios.GrupoFamiliar (
 	constraint PKGruFam PRIMARY KEY (id_grupo,id_adulto_responsable),
 	constraint FKGruFam FOREIGN KEY (id_adulto_responsable) references eSocios.Socio (id_socio)
 );
+GO
+
 
 CREATE TABLE eSocios.Tutor (
     id_tutor int identity(1,1) PRIMARY KEY,
@@ -72,12 +78,16 @@ CREATE TABLE eSocios.Tutor (
     parentesco varchar(20) NOT NULL,
     constraint FKTut FOREIGN KEY (id_socio) references eSocios.Socio(id_socio)
 );
+GO
+
 
 CREATE TABLE eSocios.Actividad (
 	id_actividad int identity (1,1) PRIMARY KEY NOT NULL,
 	nombre nvarchar(50) NOT NULL,
 	costo_mensual decimal(10,2) NOT NULL
 );
+GO
+
 
 CREATE TABLE eSocios.Realiza (
 	socio int NOT NULL,
@@ -86,33 +96,18 @@ CREATE TABLE eSocios.Realiza (
 	constraint FKRea FOREIGN KEY (socio) references eSocios.Socio (id_socio),
 	constraint FK2Rea FOREIGN KEY (id_actividad) references eSocios.Actividad (id_actividad)
 );
+GO
 
-CREATE TABLE eSocios.Dia (
-	id_dia smallint PRIMARY KEY,
-	nombre varchar(20) CHECK (nombre IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'))
+CREATE TABLE eSocios.ActividadDiaHorario (
+    id_actividad int NOT NULL,
+    dia varchar(20) NOT NULL CHECK (dia IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')),
+    hora_inicio time NOT NULL CHECK (hora_inicio BETWEEN '00:00:00' AND '23:59:59.9999999'),
+    hora_fin time NOT NULL CHECK (hora_fin BETWEEN '00:00:00' AND '23:59:59.9999999'),
+    CONSTRAINT PKActDiaHor PRIMARY KEY (id_actividad, dia, hora_inicio),
+    CONSTRAINT FKActDiaHor FOREIGN KEY (id_actividad) REFERENCES eSocios.Actividad(id_actividad),
+    CONSTRAINT CHK_HorarioValido CHECK (hora_inicio < hora_fin)
 );
-
-CREATE TABLE eSocios.Horario (
-	id_horario int PRIMARY KEY,
-	hora time NOT NULL CHECK (hora BETWEEN '00:00:00' AND '23:59:59.9999999')
-
-);
-
-CREATE TABLE eSocios.ActividadDia (
-    id_actividad int,
-    id_dia smallint,
-    constraint PKActDia PRIMARY KEY (id_actividad, id_dia),
-    constraint FKActDia FOREIGN KEY (id_actividad) references eSocios.Actividad(id_actividad),
-    constraint FK2ActDia FOREIGN KEY (id_dia) references eSocios.Dia(id_dia)
-);
-
-CREATE TABLE eSocios.ActividadHorario (
-    id_actividad int,
-    id_horario int,
-    constraint PKActHor PRIMARY KEY (id_actividad, id_horario),
-    constraint FKActHor FOREIGN KEY (id_actividad) references eSocios.Actividad(id_actividad),
-    constraint FK2ActHor FOREIGN KEY (id_horario) references eSocios.Horario(id_horario)
-);
+GO
 
 CREATE TABLE eCobros.Factura 
 (
@@ -126,6 +121,7 @@ CREATE TABLE eCobros.Factura
     recargo_venc tinyint CHECK (recargo_venc BETWEEN 0 AND 100),
     descuentos tinyint CHECK (descuentos BETWEEN 0 AND 100)
 );
+GO
 
 
 CREATE TABLE eCobros.ItemFactura 
@@ -136,6 +132,9 @@ CREATE TABLE eCobros.ItemFactura
     monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
     periodo varchar(20) NOT NULL,
 );
+GO
+
+
 CREATE TABLE eCobros.EntradaPileta (
 	id_entrada int identity(1,1) PRIMARY KEY,
 	id_socio int NOT NULL,
@@ -146,7 +145,8 @@ CREATE TABLE eCobros.EntradaPileta (
 	lluvia bit,
 	constraint FKInv FOREIGN KEY (id_socio) references eSocios.Socio(id_socio),
 	constraint FKFact FOREIGN KEY (id_item_factura) references eCobros.ItemFactura(id_item)
-)
+);
+GO
 
 
 CREATE TABLE eCobros.Pago (
@@ -158,6 +158,8 @@ CREATE TABLE eCobros.Pago (
     estado varchar(20) NOT NULL CHECK (estado IN ('completado', 'reembolsado', 'anulado')),
     debito_auto bit NOT NULL
 );
+GO
+
 
 CREATE TABLE eCobros.Reembolso (
     id_reembolso int PRIMARY KEY,
@@ -166,6 +168,8 @@ CREATE TABLE eCobros.Reembolso (
     motivo varchar(100) NOT NULL,
     fecha date NOT NULL
 );
+GO
+
 
 CREATE TABLE eAdministrativos.UsuarioAdministrativo (
 	id_usuario int identity(1,1) PRIMARY KEY,
@@ -175,5 +179,6 @@ CREATE TABLE eAdministrativos.UsuarioAdministrativo (
 	fecha_vigencia_clave date,
 	ultimo_cambio_clave date
 );
+GO
 
 

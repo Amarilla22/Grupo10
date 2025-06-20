@@ -146,310 +146,561 @@ GO
 
 --Verifica que exista un socio con el ID dado y luego de eso le asigna la actividad indicada por ID en la tabla Realiza
 
-CREATE PROCEDURE eSocios.asignarActividad
-    @id_socio INT,
-    @id_actividad INT
+CREATE PROCEDURE eSocios.AsignarActividad
+		@id_socio INT,
+		@id_actividad INT
+	AS
+	BEGIN
+		SET NOCOUNT ON;
+    
+		BEGIN TRY
+			-- Verificar que el socio existe
+			IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
+				THROW 50001, 'El socio no existe', 1;
+            
+			-- Verificar que la actividad existe
+			IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
+				THROW 50002, 'La actividad no existe', 1;
+            
+			-- Asignar actividad
+			INSERT INTO eSocios.Realiza (socio, id_actividad)
+			VALUES (@id_socio, @id_actividad);
+        
+			SELECT 'Actividad asignada correctamente' AS Resultado;
+		END TRY
+		BEGIN CATCH
+			THROW;
+		END CATCH
+	END;
+	GO 
+	
+	
+CREATE OR ALTER PROCEDURE eSocios.CrearActividad
+    @nombre NVARCHAR(50),
+    @costo_mensual DECIMAL(10,2),
+    @dias NVARCHAR(200) = NULL, -- Días separados por coma: 'lunes,miércoles,viernes'
+    @horarios NVARCHAR(200) = NULL -- Horarios separados por coma: '09:00-10:00,18:00-19:00'
 AS
 BEGIN
     SET NOCOUNT ON;
     
-    BEGIN TRY
-        -- Verificar que el socio existe
-        IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
-            THROW 50001, 'El socio no existe', 1;
-            
-        -- Verificar que la actividad existe
-        IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
-            THROW 50002, 'La actividad no existe', 1;
-            
-        -- Asignar actividad
-        INSERT INTO eSocios.Realiza (socio, id_actividad)
-        VALUES (@id_socio, @id_actividad);
-        
-        SELECT 'Actividad asignada correctamente' AS Resultado;
-    END TRY
-    BEGIN CATCH
-        THROW;
-    END CATCH
-END;
-GO
-
-
--- ""inscribe un socio a una actividad""
-CREATE PROCEDURE eSocios.inscribirActividad
-    @id_socio INT,
-    @id_actividad INT,
-    @periodo VARCHAR(20) -- Formato: 'MM/YYYY'
-AS
-BEGIN
-    SET NOCOUNT ON;
+    DECLARE @id_actividad INT;
+    DECLARE @error_message NVARCHAR(500);
+    DECLARE @dia VARCHAR(20);
+    DECLARE @horario VARCHAR(20);
+    DECLARE @hora_inicio TIME;
+    DECLARE @hora_fin TIME;
+    DECLARE @pos INT;
     
     BEGIN TRY
         BEGIN TRANSACTION;
-        DECLARE @id_actividad INT;
         
-        -- Insertar la actividad (el ID se genera automáticamente por IDENTITY)
+        -- Validaciones básicas
+        IF @nombre IS NULL OR TRIM(@nombre) = ''
+        BEGIN
+            RAISERROR('El nombre de la actividad es obligatorio', 16, 1);
+            RETURN;
+        END
+        
+        IF @costo_mensual IS NULL OR @costo_mensual < 0
+        BEGIN
+            RAISERROR('El costo mensual debe ser mayor o igual a 0', 16, 1);
+            RETURN;
+        END
+        
+        -- Verificar si ya existe una actividad con el mismo nombre
+        IF EXISTS (SELECT 1 FROM eSocios.Actividad WHERE nombre = @nombre)
+        BEGIN
+            RAISERROR('Ya existe una actividad con ese nombre', 16, 1);
+            RETURN;
+        END
+        
+        -- Validar que si se pasan días también se pasen horarios y viceversa
+        IF (@dias IS NOT NULL AND @horarios IS NULL) OR (@dias IS NULL AND @horarios IS NOT NULL)
+        BEGIN
+            RAISERROR('Si especifica días debe especificar horarios y viceversa', 16, 1);
+            RETURN;
+        END
+        
+        -- Crear la actividad
         INSERT INTO eSocios.Actividad (nombre, costo_mensual)
         VALUES (@nombre, @costo_mensual);
         
-        -- Obtener el ID generado automáticamente
         SET @id_actividad = SCOPE_IDENTITY();
         
-        -- Asignar días si se proporcionaron
-        IF @dias IS NOT NULL
+        -- Si se proporcionaron días y horarios, procesarlos
+        IF @dias IS NOT NULL AND @horarios IS NOT NULL
         BEGIN
-            DECLARE @dia VARCHAR(20);
-            DECLARE @pos INT = 1;
+            -- Crear tabla temporal para combinar días y horarios
+            CREATE TABLE #TempDias (dia VARCHAR(20));
+            CREATE TABLE #TempHorarios (hora_inicio TIME, hora_fin TIME);
+            CREATE TABLE #TempCombinacion (dia VARCHAR(20), hora_inicio TIME, hora_fin TIME);
             
-            WHILE @pos <= LEN(@dias)
+            -- Procesar días (separados por coma)
+            DECLARE @dias_temp NVARCHAR(200) = @dias + ',';
+            WHILE CHARINDEX(',', @dias_temp) > 0
             BEGIN
-                SET @dia = LTRIM(RTRIM(SUBSTRING(@dias, @pos, 
-                    CHARINDEX(',', @dias + ',', @pos) - @pos)));
+                SET @pos = CHARINDEX(',', @dias_temp);
+                SET @dia = LTRIM(RTRIM(SUBSTRING(@dias_temp, 1, @pos - 1)));
                 
-                IF @dia <> ''
+                -- Validar día
+                IF @dia NOT IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
                 BEGIN
-                    -- Buscar ID del día
-                    DECLARE @id_dia SMALLINT;
-                    SELECT @id_dia = id_dia FROM eSocios.Dia WHERE nombre = @dia;
-                    
-                    IF @id_dia IS NOT NULL
-                        INSERT INTO eSocios.ActividadDia (id_actividad, id_dia)
-                        VALUES (@id_actividad, @id_dia);
+                    RAISERROR('Día inválido: %s. Debe ser: lunes, martes, miércoles, jueves, viernes, sábado, domingo', 16, 1, @dia);
+                    RETURN;
                 END
                 
-                SET @pos = CHARINDEX(',', @dias + ',', @pos) + 1;
+                INSERT INTO #TempDias (dia) VALUES (@dia);
+                SET @dias_temp = SUBSTRING(@dias_temp, @pos + 1, LEN(@dias_temp));
             END
-        END
-        
-        -- Asignar horarios si se proporcionaron
-        IF @horarios IS NOT NULL
-        BEGIN
-            DECLARE @horario VARCHAR(10);
-            DECLARE @hpos INT = 1;
             
-            WHILE @hpos <= LEN(@horarios)
+            -- Procesar horarios (formato: '09:00-10:00,18:00-19:00')
+            DECLARE @horarios_temp NVARCHAR(200) = @horarios + ',';
+            WHILE CHARINDEX(',', @horarios_temp) > 0
             BEGIN
-                SET @horario = LTRIM(RTRIM(SUBSTRING(@horarios, @hpos, 
-                    CHARINDEX(',', @horarios + ',', @hpos) - @hpos)));
+                SET @pos = CHARINDEX(',', @horarios_temp);
+                SET @horario = LTRIM(RTRIM(SUBSTRING(@horarios_temp, 1, @pos - 1)));
                 
-                IF @horario <> ''
+                -- Validar formato horario (debe contener guión)
+                IF CHARINDEX('-', @horario) = 0
                 BEGIN
-                    -- Buscar o crear horario
-                    DECLARE @id_horario INT;
-                    DECLARE @hora TIME = TRY_CAST(@horario AS TIME);
-                    
-                    IF @hora IS NOT NULL
-                    BEGIN
-                        SELECT @id_horario = id_horario 
-                        FROM eSocios.Horario 
-                        WHERE hora = @hora;
-                        
-                        IF @id_horario IS NULL
-                        BEGIN
-                            SELECT @id_horario = ISNULL(MAX(id_horario), 0) + 1 
-                            FROM eSocios.Horario;
-                            
-                            INSERT INTO eSocios.Horario (id_horario, hora)
-                            VALUES (@id_horario, @hora);
-                        END
-                        
-                        INSERT INTO eSocios.ActividadHorario (id_actividad, id_horario)
-                        VALUES (@id_actividad, @id_horario);
-                    END
+                    RAISERROR('Formato de horario inválido: %s. Use formato HH:MM-HH:MM', 16, 1, @horario);
+                    RETURN;
                 END
                 
-                SET @hpos = CHARINDEX(',', @horarios + ',', @hpos) + 1;
+                -- Extraer hora inicio y fin
+                SET @hora_inicio = CAST(SUBSTRING(@horario, 1, CHARINDEX('-', @horario) - 1) AS TIME);
+                SET @hora_fin = CAST(SUBSTRING(@horario, CHARINDEX('-', @horario) + 1, LEN(@horario)) AS TIME);
+                
+                -- Validar que hora inicio < hora fin
+                IF @hora_inicio >= @hora_fin
+                BEGIN
+                    RAISERROR('La hora de inicio debe ser menor que la hora de fin: %s', 16, 1, @horario);
+                    RETURN;
+                END
+                
+                INSERT INTO #TempHorarios (hora_inicio, hora_fin) VALUES (@hora_inicio, @hora_fin);
+                SET @horarios_temp = SUBSTRING(@horarios_temp, @pos + 1, LEN(@horarios_temp));
             END
-        END
-        
-        -- 1. Crear o actualizar la actividad principal
-        IF EXISTS (SELECT 1 FROM eSocios.Actividad WHERE nombre = @nombre_actividad)
-        BEGIN
-            -- actualiza actividad existente
-            UPDATE eSocios.Actividad
-            SET costo_mensual = @costo_mensual
-            WHERE nombre = @nombre_actividad;
             
-            SELECT @id_actividad = id_actividad 
-            FROM eSocios.Actividad 
-            WHERE nombre = @nombre_actividad;
+            -- Crear todas las combinaciones día-horario
+            INSERT INTO #TempCombinacion (dia, hora_inicio, hora_fin)
+            SELECT d.dia, h.hora_inicio, h.hora_fin
+            FROM #TempDias d
+            CROSS JOIN #TempHorarios h;
             
-            -- elimina los horarios anteriores para esta actividad
-            DELETE FROM eSocios.ActividadHorarioDia 
-            WHERE id_actividad = @id_actividad;
-        END
-        ELSE
-        BEGIN
-            -- inserta nueva actividad
-            INSERT INTO eSocios.Actividad (nombre, costo_mensual)
-            VALUES (@nombre_actividad, @costo_mensual);
-            
-            SET @id_actividad = SCOPE_IDENTITY();
-        END
-        
-        -- 2. Procesar dias y horarios
-        DECLARE @dia_temp TABLE (
-            dia_nombre NVARCHAR(10), 
-            horarios NVARCHAR(MAX)
-        );
-        
-        DECLARE @dia_horario_temp TABLE (
-            dia_nombre NVARCHAR(10), 
-            hora TIME(0)
-        );
-        
-        -- limpia y normaliza el string de entrada
-        SET @dias_horarios = REPLACE(REPLACE(REPLACE(@dias_horarios, ' ', ''), CHAR(13), ''), CHAR(10), '');
-        
-        -- separa los dias
-        INSERT INTO @dia_temp (dia_nombre, horarios)
-        SELECT 
-            LTRIM(RTRIM(SUBSTRING(value, 1, CHARINDEX(':', value) - 1))) AS dia_nombre,
-            LTRIM(RTRIM(SUBSTRING(value, CHARINDEX(':', value) + 1, LEN(value)))) AS horarios
-        FROM STRING_SPLIT(@dias_horarios, ';')
-        WHERE value <> '';
-        
-        -- separa los horarios para cada dia
-        INSERT INTO @dia_horario_temp (dia_nombre, hora)
-        SELECT 
-            dt.dia_nombre,
-            CASE 
-                WHEN LEN(horario.value) BETWEEN 4 AND 5 THEN 
-                    -- Formato HH:MM o H:MM
-                    TRY_CAST(horario.value + ':00' AS TIME(0))
-                WHEN LEN(horario.value) = 8 THEN 
-                    -- Formato HH:MM:SS
-                    TRY_CAST(horario.value AS TIME(0))
-                ELSE NULL -- Formato inválido
-            END AS hora
-        FROM @dia_temp dt
-        CROSS APPLY STRING_SPLIT(dt.horarios, ',') horario
-        WHERE horario.value <> '';
-        
-        -- elimina horarios con formato inválido
-        DELETE FROM @dia_horario_temp WHERE hora IS NULL;
-        
-        -- 3. Validar dias existentes
-        DECLARE @dias_invalidos TABLE (dia_nombre NVARCHAR(10));
-        
-        INSERT INTO @dias_invalidos (dia_nombre)
-        SELECT DISTINCT dht.dia_nombre
-        FROM @dia_horario_temp dht
-        LEFT JOIN eSocios.Dia d ON dht.dia_nombre = LOWER(d.nombre)
-        WHERE d.id_dia IS NULL;
-        
-        IF EXISTS (SELECT 1 FROM @dias_invalidos)
-        BEGIN
-            DECLARE @lista_dias_invalidos NVARCHAR(MAX);
-            
-            SELECT @lista_dias_invalidos = STRING_AGG(dia_nombre, ', ')
-            FROM @dias_invalidos;
-            
-			DECLARE @mensaje_error NVARCHAR(MAX);
-			SET @mensaje_error = 'Los siguientes días no son válidos: ' + @lista_dias_invalidos;
-			THROW 50001, @mensaje_error, 1;
-        END
-        
-        -- 4. Inserta nuevos horarios si no existen
-        INSERT INTO eSocios.Horario (id_horario, hora)
-        SELECT 
-            ISNULL((SELECT MAX(id_horario) FROM eSocios.Horario), 0) + 
-            ROW_NUMBER() OVER (ORDER BY hora),
-            hora
-        FROM (
-            SELECT DISTINCT dht.hora
-            FROM @dia_horario_temp dht
-            WHERE NOT EXISTS (
-                SELECT 1 
-                FROM eSocios.Horario h 
-                WHERE h.hora = dht.hora
+            -- Verificar solapamientos de horarios en el mismo día
+            IF EXISTS (
+                SELECT dia 
+                FROM #TempCombinacion t1
+                WHERE EXISTS (
+                    SELECT 1 FROM #TempCombinacion t2 
+                    WHERE t1.dia = t2.dia 
+                        AND t1.hora_inicio != t2.hora_inicio
+                        AND (t1.hora_inicio < t2.hora_fin AND t1.hora_fin > t2.hora_inicio)
+                )
             )
-        ) AS nuevos_horarios;
-        
-        -- 5. Inserta relaciones actividad-día-horario
-        INSERT INTO eSocios.ActividadHorarioDia (id_actividad, id_dia, id_horario)
-        SELECT 
-            @id_actividad,
-            d.id_dia,
-            h.id_horario
-        FROM @dia_horario_temp dht
-        JOIN eSocios.Dia d ON dht.dia_nombre = LOWER(d.nombre)
-        JOIN eSocios.Horario h ON dht.hora = h.hora;
-        
-        COMMIT TRANSACTION;
-        SELECT @id_actividad AS id_actividad;
-        -- verificar si el socio ya está inscrito en la actividad
-        IF EXISTS (SELECT 1 FROM eSocios.Realiza WHERE socio = @id_socio AND id_actividad = @id_actividad)
-        BEGIN
-            RAISERROR('El socio ya está inscrito en esta actividad', 16, 1);
+            BEGIN
+                RAISERROR('Hay horarios que se solapan en el mismo día', 16, 1);
+                RETURN;
+            END
+            
+            -- Insertar todas las combinaciones
+            INSERT INTO eSocios.ActividadDiaHorario (id_actividad, dia, hora_inicio, hora_fin)
+            SELECT @id_actividad, dia, hora_inicio, hora_fin
+            FROM #TempCombinacion;
+            
+            DROP TABLE #TempDias;
+            DROP TABLE #TempHorarios;
+            DROP TABLE #TempCombinacion;
         END
         
-        -- insertar en Realiza
-        INSERT INTO eSocios.Realiza (socio, id_actividad)
-        VALUES (@id_socio, @id_actividad);
-        
-        -- obtener costo de la actividad
-        DECLARE @costo DECIMAL(10,2);
-        SELECT @costo = costo_mensual FROM eSocios.Actividad WHERE id_actividad = @id_actividad;
-        
-        -- insertar item de factura
-        INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
-        VALUES (NULL, 'Actividad', @costo, @periodo);
-        
         COMMIT TRANSACTION;
+        
+        -- Retornar información de la actividad creada
         SELECT 
-            @id_actividad AS id_actividad,
-            @nombre_actividad AS nombre_actividad,
-            (SELECT COUNT(*) FROM eSocios.ActividadHorarioDia WHERE id_actividad = @id_actividad) AS cantidad_horarios;
+            a.id_actividad,
+            a.nombre,
+            a.costo_mensual,
+            COUNT(adh.dia) as cantidad_horarios
+        FROM eSocios.Actividad a
+        LEFT JOIN eSocios.ActividadDiaHorario adh ON a.id_actividad = adh.id_actividad
+        WHERE a.id_actividad = @id_actividad
+        GROUP BY a.id_actividad, a.nombre, a.costo_mensual;
+        
+        PRINT 'Actividad creada exitosamente con ID: ' + CAST(@id_actividad as VARCHAR(10));
+        
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
             
-        THROW;
-        DECLARE @ErrorNumber INT = ERROR_NUMBER();
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        
-        -- Error personalizado para días inválidos
-        IF @ErrorNumber = 50001
-            THROW;
-            
-        -- Otros errores
-        DECLARE @ErrorProcedure NVARCHAR(128) = ERROR_PROCEDURE();
-        DECLARE @ErrorLine INT = ERROR_LINE();
-        
-        SET @ErrorMessage = 'Error en ' + ISNULL(@ErrorProcedure, 'AgregarOActualizarActividad') + 
-                           ' (Línea ' + CAST(@ErrorLine AS NVARCHAR) + '): ' + @ErrorMessage;
-        
-        THROW 50000, @ErrorMessage, 1;
+        SET @error_message = ERROR_MESSAGE();
+        RAISERROR(@error_message, 16, 1);
     END CATCH
-END;
+END
 GO
 
 
 
--- elimina a un socio de una actividad
-CREATE PROCEDURE eSocios.DesinscribirActividad
-    @id_socio INT,
-    @id_actividad INT
+CREATE OR ALTER PROCEDURE eSocios.ModificarActividad
+    @id_actividad INT,
+    @nombre NVARCHAR(50) = NULL,
+    @costo_mensual DECIMAL(10,2) = NULL,
+    @dias NVARCHAR(200) = NULL, -- Días separados por coma: 'lunes,miércoles,viernes'
+    @horarios NVARCHAR(200) = NULL, -- Horarios separados por coma: '09:00-10:00,18:00-19:00'
+    @reemplazar_horarios BIT = 0 -- 0 = mantener horarios existentes, 1 = reemplazar todos los horarios
 AS
 BEGIN
     SET NOCOUNT ON;
     
+    DECLARE @error_message NVARCHAR(500);
+    DECLARE @dia VARCHAR(20);
+    DECLARE @horario VARCHAR(20);
+    DECLARE @hora_inicio TIME;
+    DECLARE @hora_fin TIME;
+    DECLARE @pos INT;
+    DECLARE @nombre_actual NVARCHAR(50);
+    DECLARE @costo_actual DECIMAL(10,2);
+    
     BEGIN TRY
-        DELETE FROM eSocios.Realiza
-        WHERE socio = @id_socio AND id_actividad = @id_actividad;
+        BEGIN TRANSACTION;
         
-        IF @@ROWCOUNT = 0
-            THROW 50001, 'El socio no está asignado a esta actividad', 1;
+        -- Verificar que la actividad existe
+        IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
+        BEGIN
+            RAISERROR('No existe una actividad con ID: %d', 16, 1, @id_actividad);
+            RETURN;
+        END
+        
+        -- Obtener datos actuales
+        SELECT @nombre_actual = nombre, @costo_actual = costo_mensual
+        FROM eSocios.Actividad 
+        WHERE id_actividad = @id_actividad;
+        
+        -- Si no se pasan parámetros para modificar, mostrar error
+        IF @nombre IS NULL AND @costo_mensual IS NULL AND @dias IS NULL AND @horarios IS NULL
+        BEGIN
+            RAISERROR('Debe especificar al menos un campo para modificar', 16, 1);
+            RETURN;
+        END
+        
+        -- Validar nombre si se proporciona
+        IF @nombre IS NOT NULL
+        BEGIN
+            IF TRIM(@nombre) = ''
+            BEGIN
+                RAISERROR('El nombre de la actividad no puede estar vacío', 16, 1);
+                RETURN;
+            END
+            
+            -- Verificar que no exista otra actividad con el mismo nombre
+            IF EXISTS (SELECT 1 FROM eSocios.Actividad WHERE nombre = @nombre AND id_actividad != @id_actividad)
+            BEGIN
+                RAISERROR('Ya existe otra actividad con el nombre: %s', 16, 1, @nombre);
+                RETURN;
+            END
+        END
+        
+        -- Validar costo si se proporciona
+        IF @costo_mensual IS NOT NULL AND @costo_mensual < 0
+        BEGIN
+            RAISERROR('El costo mensual debe ser mayor o igual a 0', 16, 1);
+            RETURN;
+        END
+        
+        -- Validar que si se pasan días también se pasen horarios y viceversa
+        IF (@dias IS NOT NULL AND @horarios IS NULL) OR (@dias IS NULL AND @horarios IS NOT NULL)
+        BEGIN
+            RAISERROR('Si especifica días debe especificar horarios y viceversa', 16, 1);
+            RETURN;
+        END
+        
+        -- Actualizar datos básicos de la actividad
+        UPDATE eSocios.Actividad 
+        SET 
+            nombre = ISNULL(@nombre, nombre),
+            costo_mensual = ISNULL(@costo_mensual, costo_mensual)
+        WHERE id_actividad = @id_actividad;
+        
+        -- Procesar horarios si se proporcionaron
+        IF @dias IS NOT NULL AND @horarios IS NOT NULL
+        BEGIN
+            -- Si se debe reemplazar todos los horarios, eliminar los existentes
+            IF @reemplazar_horarios = 1
+            BEGIN
+                DELETE FROM eSocios.ActividadDiaHorario WHERE id_actividad = @id_actividad;
+            END
+            
+            -- Crear tablas temporales
+            CREATE TABLE #TempDias (dia VARCHAR(20));
+            CREATE TABLE #TempHorarios (hora_inicio TIME, hora_fin TIME);
+            CREATE TABLE #TempCombinacion (dia VARCHAR(20), hora_inicio TIME, hora_fin TIME);
+            
+            -- Procesar días (separados por coma)
+            DECLARE @dias_temp NVARCHAR(200) = @dias + ',';
+            WHILE CHARINDEX(',', @dias_temp) > 0
+            BEGIN
+                SET @pos = CHARINDEX(',', @dias_temp);
+                SET @dia = LTRIM(RTRIM(SUBSTRING(@dias_temp, 1, @pos - 1)));
+                
+                -- Validar día
+                IF @dia NOT IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
+                BEGIN
+                    RAISERROR('Día inválido: %s. Debe ser: lunes, martes, miércoles, jueves, viernes, sábado, domingo', 16, 1, @dia);
+                    RETURN;
+                END
+                
+                INSERT INTO #TempDias (dia) VALUES (@dia);
+                SET @dias_temp = SUBSTRING(@dias_temp, @pos + 1, LEN(@dias_temp));
+            END
+            
+            -- Procesar horarios (formato: '09:00-10:00,18:00-19:00')
+            DECLARE @horarios_temp NVARCHAR(200) = @horarios + ',';
+            WHILE CHARINDEX(',', @horarios_temp) > 0
+            BEGIN
+                SET @pos = CHARINDEX(',', @horarios_temp);
+                SET @horario = LTRIM(RTRIM(SUBSTRING(@horarios_temp, 1, @pos - 1)));
+                
+                -- Validar formato horario (debe contener guión)
+                IF CHARINDEX('-', @horario) = 0
+                BEGIN
+                    RAISERROR('Formato de horario inválido: %s. Use formato HH:MM-HH:MM', 16, 1, @horario);
+                    RETURN;
+                END
+                
+                -- Extraer hora inicio y fin
+                SET @hora_inicio = CAST(SUBSTRING(@horario, 1, CHARINDEX('-', @horario) - 1) AS TIME);
+                SET @hora_fin = CAST(SUBSTRING(@horario, CHARINDEX('-', @horario) + 1, LEN(@horario)) AS TIME);
+                
+                -- Validar que hora inicio < hora fin
+                IF @hora_inicio >= @hora_fin
+                BEGIN
+                    RAISERROR('La hora de inicio debe ser menor que la hora de fin: %s', 16, 1, @horario);
+                    RETURN;
+                END
+                
+                INSERT INTO #TempHorarios (hora_inicio, hora_fin) VALUES (@hora_inicio, @hora_fin);
+                SET @horarios_temp = SUBSTRING(@horarios_temp, @pos + 1, LEN(@horarios_temp));
+            END
+            
+            -- Crear todas las combinaciones día-horario
+            INSERT INTO #TempCombinacion (dia, hora_inicio, hora_fin)
+            SELECT d.dia, h.hora_inicio, h.hora_fin
+            FROM #TempDias d
+            CROSS JOIN #TempHorarios h;
+            
+            -- Verificar solapamientos con horarios existentes (si no se reemplazan)
+            IF @reemplazar_horarios = 0
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM #TempCombinacion tc
+                    WHERE EXISTS (
+                        SELECT 1 FROM eSocios.ActividadDiaHorario adh
+                        WHERE adh.id_actividad = @id_actividad
+                            AND adh.dia = tc.dia
+                            AND (tc.hora_inicio < adh.hora_fin AND tc.hora_fin > adh.hora_inicio)
+                    )
+                )
+                BEGIN
+                    RAISERROR('Los nuevos horarios se solapan con horarios existentes', 16, 1);
+                    RETURN;
+                END
+            END
+            
+            -- Verificar solapamientos entre los nuevos horarios
+            IF EXISTS (
+                SELECT dia 
+                FROM #TempCombinacion t1
+                WHERE EXISTS (
+                    SELECT 1 FROM #TempCombinacion t2 
+                    WHERE t1.dia = t2.dia 
+                        AND t1.hora_inicio != t2.hora_inicio
+                        AND (t1.hora_inicio < t2.hora_fin AND t1.hora_fin > t2.hora_inicio)
+                )
+            )
+            BEGIN
+                RAISERROR('Hay horarios que se solapan en el mismo día', 16, 1);
+                RETURN;
+            END
+            
+            -- Insertar los nuevos horarios (evitar duplicados si no se reemplazaron)
+            INSERT INTO eSocios.ActividadDiaHorario (id_actividad, dia, hora_inicio, hora_fin)
+            SELECT @id_actividad, tc.dia, tc.hora_inicio, tc.hora_fin
+            FROM #TempCombinacion tc
+            WHERE NOT EXISTS (
+                SELECT 1 FROM eSocios.ActividadDiaHorario adh
+                WHERE adh.id_actividad = @id_actividad
+                    AND adh.dia = tc.dia
+                    AND adh.hora_inicio = tc.hora_inicio
+                    AND adh.hora_fin = tc.hora_fin
+            );
+            
+            DROP TABLE #TempDias;
+            DROP TABLE #TempHorarios;
+            DROP TABLE #TempCombinacion;
+        END
+        
+        COMMIT TRANSACTION;
+        
+        -- Retornar información de la actividad modificada
+        SELECT 
+            a.id_actividad,
+            a.nombre,
+            a.costo_mensual,
+            COUNT(adh.dia) as cantidad_horarios,
+            CASE 
+                WHEN @nombre IS NOT NULL AND @nombre != @nombre_actual THEN 'Nombre modificado'
+                ELSE 'Nombre sin cambios'
+            END as cambio_nombre,
+            CASE 
+                WHEN @costo_mensual IS NOT NULL AND @costo_mensual != @costo_actual THEN 'Costo modificado'
+                ELSE 'Costo sin cambios'
+            END as cambio_costo,
+            CASE 
+                WHEN @dias IS NOT NULL AND @horarios IS NOT NULL THEN 
+                    CASE WHEN @reemplazar_horarios = 1 THEN 'Horarios reemplazados' ELSE 'Horarios agregados' END
+                ELSE 'Horarios sin cambios'
+            END as cambio_horarios
+        FROM eSocios.Actividad a
+        LEFT JOIN eSocios.ActividadDiaHorario adh ON a.id_actividad = adh.id_actividad
+        WHERE a.id_actividad = @id_actividad
+        GROUP BY a.id_actividad, a.nombre, a.costo_mensual;
+        
+        PRINT 'Actividad modificada exitosamente';
+        
     END TRY
     BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW 50000, @ErrorMessage, 1;
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+            
+        SET @error_message = ERROR_MESSAGE();
+        RAISERROR(@error_message, 16, 1);
     END CATCH
-END;
+END
 GO
 
+
+
+CREATE OR ALTER PROCEDURE eSocios.EliminarActividad
+    @id_actividad INT = NULL,
+    @nombre NVARCHAR(50) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    DECLARE @error_message NVARCHAR(500);
+    DECLARE @nombre_actividad NVARCHAR(50);
+    DECLARE @cantidad_horarios INT;
+    DECLARE @costo_actividad DECIMAL(10,2);
+    
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        
+        -- Validar que se proporcione al menos un parámetro de búsqueda
+        IF @id_actividad IS NULL AND @nombre IS NULL
+        BEGIN
+            RAISERROR('Debe especificar el ID o el nombre de la actividad a eliminar', 16, 1);
+            RETURN;
+        END
+        
+        -- Si se proporciona nombre, buscar el ID
+        IF @nombre IS NOT NULL AND @id_actividad IS NULL
+        BEGIN
+            SELECT @id_actividad = id_actividad 
+            FROM eSocios.Actividad 
+            WHERE nombre = @nombre;
+            
+            IF @id_actividad IS NULL
+            BEGIN
+                RAISERROR('No se encontró una actividad con el nombre: %s', 16, 1, @nombre);
+                RETURN;
+            END
+        END
+        
+        -- Verificar que la actividad existe
+        IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
+        BEGIN
+            RAISERROR('No existe una actividad con ID: %d', 16, 1, @id_actividad);
+            RETURN;
+        END
+        
+        -- Obtener información de la actividad antes de eliminarla
+        SELECT 
+            @nombre_actividad = nombre,
+            @costo_actividad = costo_mensual
+        FROM eSocios.Actividad 
+        WHERE id_actividad = @id_actividad;
+        
+        -- Contar horarios asociados
+        SELECT @cantidad_horarios = COUNT(*)
+        FROM eSocios.ActividadDiaHorario 
+        WHERE id_actividad = @id_actividad;
+        
+        -- Verificar si hay dependencias (esto sería útil si tienes otras tablas relacionadas)
+        -- Por ejemplo, si tienes una tabla de inscripciones:
+        /*
+        IF EXISTS (SELECT 1 FROM eSocios.Inscripciones WHERE id_actividad = @id_actividad)
+        BEGIN
+            RAISERROR('No se puede eliminar la actividad porque tiene inscripciones asociadas', 16, 1);
+            RETURN;
+        END
+        */
+        
+        -- Eliminar horarios primero (por la foreign key)
+        DELETE FROM eSocios.ActividadDiaHorario 
+        WHERE id_actividad = @id_actividad;
+        
+        -- Eliminar la actividad
+        DELETE FROM eSocios.Actividad 
+        WHERE id_actividad = @id_actividad;
+        
+        COMMIT TRANSACTION;
+        
+        -- Mostrar confirmación de eliminación
+        SELECT 
+            'ACTIVIDAD ELIMINADA EXITOSAMENTE' as Resultado,
+            @id_actividad as ID_Eliminado,
+            @nombre_actividad as Nombre_Eliminado,
+            @costo_actividad as Costo_Eliminado,
+            @cantidad_horarios as Horarios_Eliminados,
+            GETDATE() as Fecha_Eliminacion;
+        
+        PRINT 'Actividad "' + @nombre_actividad + '" eliminada exitosamente con ' + CAST(@cantidad_horarios as VARCHAR(10)) + ' horarios asociados';
+        
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+            
+        SET @error_message = ERROR_MESSAGE();
+        RAISERROR(@error_message, 16, 1);
+    END CATCH
+END
+GO
+
+	-- elimina a un socio de una actividad
+CREATE PROCEDURE eSocios.DesinscribirActividad
+		@id_socio INT,
+		@id_actividad INT
+	AS
+	BEGIN
+		SET NOCOUNT ON;
+    
+		BEGIN TRY
+			DELETE FROM eSocios.Realiza
+			WHERE socio = @id_socio AND id_actividad = @id_actividad;
+        
+			IF @@ROWCOUNT = 0
+				THROW 50001, 'El socio no está asignado a esta actividad', 1;
+		END TRY
+		BEGIN CATCH
+			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+			THROW 50000, @ErrorMessage, 1;
+		END CATCH
+	END;
+	GO
 
 
 -- crea un nuevo grupo familiar asignando un adulto responsable
