@@ -63,17 +63,29 @@
     </LogicalFolder>
     <LogicalFolder Name="Queries" Type="0" Sorted="true">
       <Items>
-        <FileNode Name="CreacionSP.sql">
+        <FileNode Name="00_CreacionObjetos.sql">
           <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:GCX-PC\SQLEXPRESS:True</AssociatedConnectionMoniker>
           <AssociatedConnSrvName>GCX-PC\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
-          <FullPath>CreacionSP.sql</FullPath>
+          <FullPath>00_CreacionObjetos.sql</FullPath>
         </FileNode>
-        <FileNode Name="CreacionTablas.sql">
+        <FileNode Name="01_CreacionSP.sql">
           <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:GCX-PC\SQLEXPRESS:True</AssociatedConnectionMoniker>
           <AssociatedConnSrvName>GCX-PC\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
-          <FullPath>CreacionTablas.sql</FullPath>
+          <FullPath>01_CreacionSP.sql</FullPath>
+        </FileNode>
+        <FileNode Name="02_Prueba_actividad.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:GCX-PC\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>GCX-PC\SQLEXPRESS</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>02_Prueba_actividad.sql</FullPath>
+        </FileNode>
+        <FileNode Name="juego_prueba_factura_pileta.sql">
+          <AssociatedConnectionMoniker />
+          <AssociatedConnSrvName />
+          <AssociatedConnUserName />
+          <FullPath>juego_prueba_factura_pileta.sql</FullPath>
         </FileNode>
         <FileNode Name="JuegoPrueba.sql">
           <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:GCX-PC\SQLEXPRESS:True</AssociatedConnectionMoniker>
@@ -81,11 +93,11 @@
           <AssociatedConnUserName />
           <FullPath>JuegoPrueba.sql</FullPath>
         </FileNode>
-        <FileNode Name="SQLQuery1.sql">
+        <FileNode Name="Prueba_usuario_y_socio.sql">
           <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:GCX-PC\SQLEXPRESS:True</AssociatedConnectionMoniker>
           <AssociatedConnSrvName>GCX-PC\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
-          <FullPath>SQLQuery1.sql</FullPath>
+          <FullPath>Prueba_usuario_y_socio.sql</FullPath>
         </FileNode>
       </Items>
     </LogicalFolder>

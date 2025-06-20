@@ -13,7 +13,6 @@ Integrantes:
 */
 
 use Com5600G10
-
 go
 
 

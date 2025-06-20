@@ -1,3 +1,16 @@
+/*
+Entrega 4 - Juegos de prueba.
+Fecha de entrega: 20/06/2025
+Nro. Comision: 5600
+Grupo: 10
+Materia: Bases de datos aplicada
+Integrantes:
+- Moggi Rocio , DNI: 45576066
+- Amarilla Santiago, DNI: 45481129 
+- Martinez Galo, DNI: 43094675
+- Fleita Thiago , DNI: 45233264
+*/
+
 -- =====================================================
 -- CASOS DE PRUEBA PARA STORED PROCEDURES DE ACTIVIDADES
 -- =====================================================
@@ -8,7 +21,7 @@ DELETE FROM eSocios.ActividadDiaHorario;
 DELETE FROM eSocios.Actividad;
 */
 
-use prueba
+use Com5600G10
 go
 
 -- '==========================================';
