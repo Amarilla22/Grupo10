@@ -172,8 +172,8 @@ CREATE PROCEDURE eSocios.AsignarActividad
 		END CATCH
 	END;
 	GO 
-	
-	
+
+
 CREATE OR ALTER PROCEDURE eSocios.CrearActividad
     @nombre NVARCHAR(50),
     @costo_mensual DECIMAL(10,2),
@@ -312,8 +312,7 @@ BEGIN
             DROP TABLE #TempDias;
             DROP TABLE #TempHorarios;
             DROP TABLE #TempCombinacion;
-        END
-        
+        END   
         COMMIT TRANSACTION;
         
         -- Retornar información de la actividad creada
@@ -870,6 +869,7 @@ BEGIN
 END;
 GO
 
+
 -- asigna un tutor a un socio menor, tomando los datos de un socio existente
 -- el socio tutor debe ser mayor de edad (categoria 'Mayor')
 -- el socio al que se le asigna el tutor debe ser menor de edad (categoria 'Menor' o 'Cadete')
@@ -962,7 +962,7 @@ END; --------------
 GO
 
 
-	CREATE PROCEDURE eSocios.ModificarTutor
+CREATE PROCEDURE eSocios.ModificarTutor
 		@id_tutor INT,
 		@nombre VARCHAR(50),
 		@apellido VARCHAR(50),
@@ -1009,7 +1009,7 @@ GO
 	GO
 
 
-	CREATE PROCEDURE eSocios.EliminarTutor
+CREATE PROCEDURE eSocios.EliminarTutor
 		@id_tutor INT
 	AS
 	BEGIN
@@ -1537,85 +1537,7 @@ END; --galo
 GO
 
 
-
-use j_prueba
-go
-
-CREATE PROCEDURE eSocios.ModificarTutor
-	@id_tutor INT,
-    @nombre VARCHAR(50),
-    @apellido VARCHAR(50),
-    @email NVARCHAR(100),
-    @fecha_nac DATE,
-    @telefono VARCHAR(10),
-    @parentesco VARCHAR(20)
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    BEGIN TRY
--- Verificar que el tutor exista
-		IF NOT EXISTS (
-			SELECT 1 
-			FROM eSocios.Tutor 
-			WHERE id_tutor = @id_tutor
-		)
-        THROW 60001, 'El tutor especificado no existe', 1;
-
--- Verificar que no se repita el email con otro tutor
-		IF EXISTS (
-			SELECT 1 
-			FROM eSocios.Tutor 
-			WHERE email = @email AND id_tutor <> @id_tutor
-		)
-        THROW 60002, 'Ya existe otro tutor con ese email', 1;
--- Actualizar datos del tutor
-		UPDATE eSocios.Tutor
-		SET nombre = @nombre,
-			apellido = @apellido,
-			email = @email,
-			fecha_nac = @fecha_nac,
-			telefono = @telefono,
-			parentesco = @parentesco
-		WHERE id_tutor = @id_tutor;
-
-	END TRY
-    BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW 50000, @ErrorMessage, 1;
-    END CATCH
-END; ----R
-GO
-
-
-CREATE PROCEDURE eSocios.EliminarTutor
-    @id_tutor INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-	BEGIN TRY
--- Verificar que el tutor exista
-        IF NOT EXISTS (
-			SELECT 1 
-			FROM eSocios.Tutor 
-			WHERE id_tutor = @id_tutor
-		)
-        THROW 60101, 'El tutor especificado no existe', 1;
-
--- Eliminar tutor
-        DELETE FROM eSocios.Tutor
-        WHERE id_tutor = @id_tutor;
-
-	END TRY
-    BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW 60100, @ErrorMessage, 1;
-    END CATCH
-END; ----R
-GO
-
-CREATE OR ALTER PROCEDURE eCobros.CargarPago
+CREATE PROCEDURE eCobros.CargarPago
     @id_pago INT,
     @id_factura INT,
     @medio_pago VARCHAR(50),
@@ -1844,6 +1766,8 @@ BEGIN
         RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
     END CATCH
 END
+GO
+
 
 CREATE PROCEDURE eCobros.BorradoLogicoReembolso
     @id_reembolso INT,
