@@ -127,8 +127,8 @@ CREATE TABLE eCobros.ItemFactura
 (
     id_item int IDENTITY(1,1) PRIMARY KEY,
     id_factura int NOT NULL FOREIGN KEY references eCobros.Factura(id_factura),
-    concepto varchar(100) NOT NULL CHECK (concepto IN ('membresia', 'actividad', 'pileta', 'colonia', 'sum')), 
-    monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
+    concepto varchar(100) NOT NULL CHECK (concepto IN ('membresia', 'actividad', 'pileta', 'colonia', 'sum', 'recargo por segundo vencimiento','reembolso')), 
+    monto decimal(10, 2),
     periodo varchar(20) NOT NULL,
 );
 GO

@@ -1039,7 +1039,7 @@ CREATE PROCEDURE eSocios.EliminarTutor
 
 
 -- SP para generar factura con los descuentos correspondientes
-CREATE PROCEDURE eCobros.generarFactura
+CREATE OR ALTER PROCEDURE eCobros.generarFactura
     @id_socio INT,
     @periodo VARCHAR(20), -- formato: 'MM/YYYY'
     @fecha_emision DATE = NULL
@@ -1058,19 +1058,6 @@ BEGIN
         DECLARE @fecha_venc_1 DATE = DATEADD(DAY, 5, @fecha_emision);
         DECLARE @fecha_venc_2 DATE = DATEADD(DAY, 5, @fecha_venc_1);
         
-        -- crear la factura
-        DECLARE @id_factura INT;
-        INSERT INTO eCobros.Factura (
-            id_socio, fecha_emision, fecha_venc_1, fecha_venc_2, 
-            estado, total, recargo_venc, descuentos
-        )
-        VALUES (
-            @id_socio, @fecha_emision, @fecha_venc_1, @fecha_venc_2, 
-            'pendiente', 0, 0, 0
-        );
-        
-        SET @id_factura = SCOPE_IDENTITY();
-        
         -- variables de calculo
         DECLARE @total DECIMAL(10,2) = 0;
         DECLARE @porcentaje_descuento_familiar DECIMAL(5,2) = 0;
@@ -1080,6 +1067,14 @@ BEGIN
         DECLARE @id_grupo_familiar INT;
         DECLARE @id_categoria INT;
         DECLARE @costo_membresia DECIMAL(10,2);
+        DECLARE @id_factura INT;
+        
+        -- verificar que el socio existe
+        IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
+        BEGIN
+            RAISERROR('El socio con ID %d no existe', 16, 1, @id_socio);
+            RETURN;
+        END;
         
         -- obtener datos del socio
         SELECT 
@@ -1093,11 +1088,56 @@ BEGIN
         FROM eSocios.Categoria 
         WHERE id_categoria = @id_categoria;
         
+        -- validar que la categoria existe
+        IF @costo_membresia IS NULL
+        BEGIN
+            RAISERROR('La categoría con ID %d no existe o no tiene costo definido', 16, 1, @id_categoria);
+            RETURN;
+        END;
+        
+        SET @total_membresias = @costo_membresia;
+        
+        -- calcular total de actividades
+        SELECT @total_actividades = ISNULL(SUM(a.costo_mensual), 0)
+        FROM eSocios.Realiza sa
+        JOIN eSocios.Actividad a ON sa.id_actividad = a.id_actividad
+        WHERE sa.socio = @id_socio;
+        
+        -- aplicar descuento familiar (15%)
+        IF @id_grupo_familiar IS NOT NULL
+            SET @porcentaje_descuento_familiar = 15;
+        
+        -- aplicar descuento por multiples actividades (10%)
+        DECLARE @cant_actividades INT;
+        SELECT @cant_actividades = COUNT(*)
+        FROM eSocios.Realiza
+        WHERE socio = @id_socio;
+        
+        IF @cant_actividades > 1
+            SET @porcentaje_descuento_actividades = 10;
+        
+        -- calcular total con descuentos
+        DECLARE @total_con_descuentos DECIMAL(10,2) = 0;
+        SET @total_con_descuentos = 
+            @total_membresias * (1 - @porcentaje_descuento_familiar / 100) +
+            @total_actividades * (1 - @porcentaje_descuento_actividades / 100);
+        
+        -- crear la factura con todos los valores calculados
+        INSERT INTO eCobros.Factura (
+            id_socio, fecha_emision, fecha_venc_1, fecha_venc_2, 
+            estado, total, recargo_venc, descuentos
+        )
+        VALUES (
+            @id_socio, @fecha_emision, @fecha_venc_1, @fecha_venc_2, 
+            'pendiente', @total_con_descuentos, 0, 
+            @porcentaje_descuento_familiar + @porcentaje_descuento_actividades
+        );
+        
+        SET @id_factura = SCOPE_IDENTITY();
+        
         -- insertar item de membresia
         INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
         VALUES (@id_factura, 'membresia', @costo_membresia, @periodo);
-        
-        SET @total_membresias = @costo_membresia;
         
         -- insertar items por actividades asignadas
         INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
@@ -1109,48 +1149,7 @@ BEGIN
         FROM eSocios.Realiza sa
         JOIN eSocios.Actividad a ON sa.id_actividad = a.id_actividad
         WHERE sa.socio = @id_socio;
-        
-        -- calcular total de actividades
-        SELECT @total_actividades = ISNULL(SUM(monto), 0)
-        FROM eCobros.ItemFactura
-        WHERE id_factura = @id_factura AND concepto = 'actividad';
-        
-        -- aplicar descuento familiar (15%)
-        IF @id_grupo_familiar IS NOT NULL
-            SET @porcentaje_descuento_familiar = 15;
-        
-        -- aplicar descuento por multiples actividades (10%)
-        DECLARE @cant_actividades INT;
-        SELECT @cant_actividades = COUNT(*)
-        FROM eCobros.ItemFactura
-        WHERE id_factura = @id_factura AND concepto = 'actividad';
-        
-        IF @cant_actividades > 1
-            SET @porcentaje_descuento_actividades = 10;
-        
-        -- calcular total con descuentos
-        DECLARE @total_con_descuentos DECIMAL(10,2) = 0;
-        SET @total_con_descuentos = 
-            @total_membresias * (1 - @porcentaje_descuento_familiar / 100) +
-            @total_actividades * (1 - @porcentaje_descuento_actividades / 100);
-        
-        -- agregar otros conceptos (ej: pileta)
-        SET @total_con_descuentos = @total_con_descuentos + 
-            ISNULL((
-                SELECT SUM(monto)
-                FROM eCobros.ItemFactura
-                WHERE id_factura = @id_factura 
-                AND concepto NOT IN ('membresia', 'actividad')
-            ), 0);
-        
-        -- actualizar la factura con los totales
-        UPDATE eCobros.Factura
-        SET 
-            total = @total_con_descuentos,
-            descuentos = @porcentaje_descuento_familiar + @porcentaje_descuento_actividades,
-            recargo_venc = 0
-        WHERE id_factura = @id_factura;
-        
+                
         COMMIT TRANSACTION;
         
         RETURN @id_factura;
@@ -1161,26 +1160,32 @@ BEGIN
         
         THROW;
     END CATCH
-END; --galo
+END;
 GO
 
-
 -- procedimiento para aplicar recargo por segundo vencimiento
-CREATE PROCEDURE eCobros.aplicarRecargoSegundoVencimiento
+CREATE OR ALTER PROCEDURE eCobros.aplicarRecargoSegundoVencimiento
     @id_factura INT
 AS
 BEGIN
     SET NOCOUNT ON;
-    
+
     BEGIN TRY
-        -- verifica si la factura esta en segundo vencimiento
         DECLARE @fecha_venc_1 DATE;
         DECLARE @fecha_venc_2 DATE;
         DECLARE @estado VARCHAR(20);
         DECLARE @total_actual DECIMAL(10,2);
         DECLARE @recargo_aplicado BIT = 0;
-        DECLARE @porcentaje_recargo DECIMAL(5,2) = 10; -- porcentaje fijo de recargo
-        
+        DECLARE @porcentaje_recargo DECIMAL(5,2) = 10;
+
+        -- verifica si la factura existe
+        IF NOT EXISTS (SELECT 1 FROM eCobros.Factura WHERE id_factura = @id_factura)
+        BEGIN
+            PRINT 'La factura con ID ' + CAST(@id_factura AS VARCHAR) + ' no existe.';
+            RETURN;
+        END;
+
+        -- obtiene datos de la factura
         SELECT 
             @fecha_venc_1 = fecha_venc_1,
             @fecha_venc_2 = fecha_venc_2,
@@ -1188,35 +1193,46 @@ BEGIN
             @total_actual = total
         FROM eCobros.Factura
         WHERE id_factura = @id_factura;
-        
-        -- verifica si ya se aplico recargo
-        IF EXISTS 
-		(
-            SELECT 1 FROM eCobros.ItemFactura 
+
+        -- verifica si ya se aplico el recargo
+        IF EXISTS (
+            SELECT 1 
+            FROM eCobros.ItemFactura 
             WHERE id_factura = @id_factura 
-            AND concepto = 'recargo por segundo vencimiento'
+              AND concepto = 'recargo por segundo vencimiento'
         )
         BEGIN
             SET @recargo_aplicado = 1;
-        END
-        
-        -- verifica condiciones para aplicar recargo
-        IF @estado = 'pendiente' AND 
-           GETDATE() > @fecha_venc_1 AND 
-           GETDATE() <= @fecha_venc_2 AND 
-           @recargo_aplicado = 0
+            PRINT 'Ya se había aplicado el recargo para la factura ' + CAST(@id_factura AS VARCHAR) + '.';
+            RETURN;
+        END;
+
+        -- evalua condiciones de vencimiento
+        IF @estado <> 'pendiente'
         BEGIN
-            -- calcula monto del recargo (10% del total actual)
+            PRINT 'La factura ' + CAST(@id_factura AS VARCHAR) + ' no está pendiente.';
+            RETURN;
+        END;
+
+        IF GETDATE() <= @fecha_venc_1
+        BEGIN
+            PRINT 'La factura ' + CAST(@id_factura AS VARCHAR) + ' aún está en primer vencimiento.';
+            RETURN;
+        END;
+        
+        IF GETDATE() > @fecha_venc_1
+        BEGIN
+            -- aplica recargo del 10%
             DECLARE @monto_recargo DECIMAL(10,2) = @total_actual * (@porcentaje_recargo / 100.0);
-            
-            -- actualiza factura con nuevo total y establecer recargo_venc a 10
+
+            -- actualiza total y recargo en factura
             UPDATE eCobros.Factura
             SET 
                 total = @total_actual + @monto_recargo,
-                recargo_venc = @porcentaje_recargo -- ahora si establecemos el 10%
+                recargo_venc = @porcentaje_recargo
             WHERE id_factura = @id_factura;
-            
-            -- registra item de recargo
+
+            -- inserta item de recargo
             INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
             VALUES (
                 @id_factura, 
@@ -1224,12 +1240,24 @@ BEGIN
                 @monto_recargo, 
                 CONVERT(VARCHAR(7), GETDATE(), 111)
             );
-        END
+
+            PRINT 'Recargo aplicado correctamente a la factura ' + CAST(@id_factura AS VARCHAR) + 
+                  '. Monto: $' + CAST(@monto_recargo AS VARCHAR);
+            RETURN;
+        END;
+
+        IF GETDATE() > @fecha_venc_2
+        BEGIN
+            PRINT 'La factura ' + CAST(@id_factura AS VARCHAR) + 
+                  ' ya superó el segundo vencimiento y se encuentra en mora. No se aplica recargo.';
+            RETURN;
+        END;
     END TRY
     BEGIN CATCH
+        PRINT 'Error en la ejecución: ' + ERROR_MESSAGE();
         THROW;
     END CATCH
-END; 
+END;
 GO
 
 
@@ -1268,7 +1296,7 @@ BEGIN
 
         THROW;
     END CATCH
-END; --galo
+END; 
 GO
 
 
@@ -1412,7 +1440,7 @@ BEGIN
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         THROW;
     END CATCH
-END; --galo
+END; 
 GO
 
 
@@ -1534,7 +1562,7 @@ BEGIN
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();     
         THROW;
     END CATCH
-END; --galo
+END;
 GO
 
 
