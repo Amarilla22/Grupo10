@@ -758,6 +758,7 @@ BEGIN
 END;
 GO
 
+
 -- agrega un miembro a un grupo familiar existente
 -- verifica que el miembro no pertenezca ya a otro grupo
 CREATE PROCEDURE eSocios.AgregarMiembroAGrupoFamiliar
@@ -1228,7 +1229,7 @@ BEGIN
     BEGIN CATCH
         THROW;
     END CATCH
-END; --galo
+END; 
 GO
 
 
@@ -1673,8 +1674,6 @@ BEGIN
     END CATCH
 END
 go
-
-
 
 
 CREATE PROCEDURE eCobros.AnularPago --Actualiza factura
