@@ -174,7 +174,7 @@ CREATE TABLE eAdministrativos.UsuarioAdministrativo (
 	id_usuario int identity(1,1) PRIMARY KEY,
 	rol varchar (50),
 	nombre_usuario nvarchar(50),
-	clave nvarchar(50),
+	clave nvarchar(50), --revisar check
 	fecha_vigencia_clave date,
 	ultimo_cambio_clave date
 );

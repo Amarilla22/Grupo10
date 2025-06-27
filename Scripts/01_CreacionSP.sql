@@ -1864,17 +1864,16 @@ GO
 
 
 
-CREATE PROCEDURE eAdministrativos.CrearUsuario
+CREATE OR ALTER PROCEDURE eAdministrativos.CrearUsuario
 	@rol VARCHAR(50),
 	@nombre_usuario NVARCHAR(50),
 	@clave NVARCHAR(50),
-	@vigencia_dias INT = 90 --cada 3 meses caduca contraseña
+	@vigencia_dias INT = 90
 AS
 BEGIN
 	SET NOCOUNT ON;
 
 	BEGIN TRY
-		--Verifico si existe un usuario con el mismo nombre
 		IF EXISTS (
 			SELECT 1
 			FROM eAdministrativos.UsuarioAdministrativo
@@ -1882,25 +1881,57 @@ BEGIN
 		)
 			THROW 50001, 'El nombre de usuario ya existe.',1;
 
-			--Insercion nuevo usuario
-			INSERT INTO eAdministrativos.UsuarioAdministrativo (
-				rol, nombre_usuario, clave, fecha_vigencia_clave, ultimo_cambio_clave
-			)
-			VALUES (
-				@rol, @nombre_usuario, @clave, DATEADD(DAY, @vigencia_dias, GETDATE()), GETDATE()
-			); --dateadd le suma @vigencia_dias a la fecha de hoy, dando como result la fecha vigencia (cuando caduca) 
+		-- Validación de formato de clave (además del CHECK_POLICY del login)
+		IF LEN(@clave) < 8  OR @clave NOT LIKE '%[A-Z]%' OR @clave NOT LIKE '%[a-z]%' OR @clave NOT LIKE '%[0-9]%' OR @clave NOT LIKE '%[^a-zA-Z0-9]%'
+			THROW 50003, 'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas, números y símbolos.', 1;
 
-			PRINT 'Usuario creado con éxito.';
+		IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @rol AND type = 'R')
+			THROW 50004, 'El rol especificado no existe.', 1;
+
+		
+		-- Inserción en tabla lógica
+		INSERT INTO eAdministrativos.UsuarioAdministrativo (
+			rol, nombre_usuario, clave, fecha_vigencia_clave, ultimo_cambio_clave
+		)
+		VALUES (
+			@rol, @nombre_usuario, @clave, DATEADD(DAY, @vigencia_dias, GETDATE()), GETDATE()
+		);
+
+		-- Crear LOGIN
+		DECLARE @sql_login NVARCHAR(MAX) = '
+			IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = ''' + @nombre_usuario + ''')
+			BEGIN
+				CREATE LOGIN [' + @nombre_usuario + '] 
+				WITH PASSWORD = ''' + @clave + ''', 
+				CHECK_POLICY = ON;
+			END';
+		EXEC (@sql_login);
+
+		-- Crear USER
+        DECLARE @sql_user NVARCHAR(MAX) = '
+        IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = ''' + @nombre_usuario + ''')
+        BEGIN
+            CREATE USER [' + @nombre_usuario + '] FOR LOGIN [' + @nombre_usuario + '];
+        END';
+        EXEC (@sql_user);
+
+		-- Asignar al rol
+        DECLARE @sql_role NVARCHAR(MAX) = '
+        ALTER ROLE [' + @rol + '] ADD MEMBER [' + @nombre_usuario + ']';
+        EXEC (@sql_role);
+
+		PRINT 'Usuario creado con éxito.';
 	END TRY
 	BEGIN CATCH
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
-END;--------T
+END;
 GO
 
 
-CREATE PROCEDURE eAdministrativos.ModificarUsuario
+
+CREATE OR ALTER PROCEDURE eAdministrativos.ModificarUsuario
 	@id_usuario INT,
 	@rol VARCHAR(50),
 	@nombre_usuario NVARCHAR(50),
@@ -1911,23 +1942,61 @@ BEGIN
 	SET NOCOUNT ON;
 
 	BEGIN TRY
-	--Validacion existencia
-	IF NOT EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario)
-		THROW 50001, 'No existe usuario con ese ID.', 1;
+		--Validacion existencia
+		IF NOT EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario)
+			THROW 50001, 'No existe usuario con ese ID.', 1;
 
-	--Validar que el nuevo nombre no esté en uso
-	IF EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE nombre_usuario = @nombre_usuario AND id_usuario <> @id_usuario)
-		THROW 50002, 'El nombre de usuario ya está en uso.', 1;
+		--Validar que el nuevo nombre no esté en uso
+		IF EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE nombre_usuario = @nombre_usuario AND id_usuario <> @id_usuario)
+			THROW 50002, 'El nombre de usuario ya está en uso.', 1;
 
-	--Actualizacion
-	UPDATE eAdministrativos.UsuarioAdministrativo
-		SET 
-			rol = @rol,
-			nombre_usuario = @nombre_usuario,
-			clave = @clave,
-			fecha_vigencia_clave = DATEADD(DAY,@vigencia_dias,GETDATE()),
-			ultimo_cambio_clave = GETDATE()
-		WHERE id_usuario = @id_usuario;
+		-- Validación de formato de clave 
+		IF LEN(@clave) < 8 
+			OR @clave NOT LIKE '%[A-Z]%' 
+			OR @clave NOT LIKE '%[a-z]%' 
+			OR @clave NOT LIKE '%[0-9]%' 
+			OR @clave NOT LIKE '%[^a-zA-Z0-9]%' 
+				THROW 50003, 'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas, números y símbolos.', 1;
+
+
+		IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @rol AND type = 'R')
+			THROW 50004, 'El rol especificado no existe.', 1;
+
+		--Obtener el nombre anterior
+		DECLARE @nombre_anterior NVARCHAR(50);
+		SELECT @nombre_anterior = nombre_usuario FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario;
+	
+		--Actualizacion
+		UPDATE eAdministrativos.UsuarioAdministrativo
+			SET 
+				rol = @rol,
+				nombre_usuario = @nombre_usuario,
+				clave = @clave,
+				fecha_vigencia_clave = DATEADD(DAY,@vigencia_dias,GETDATE()),
+				ultimo_cambio_clave = GETDATE()
+			WHERE id_usuario = @id_usuario;
+
+
+		--Si el nombre cambió, renombra login y usuario
+		IF @nombre_anterior <> @nombre_usuario
+			BEGIN
+				DECLARE @sql_rename_login NVARCHAR(MAX) = 'ALTER LOGIN [' + @nombre_anterior + '] WITH NAME = [' + @nombre_usuario + ']';
+				EXEC (@sql_rename_login);
+
+				--Cambbiar nombre del USER
+				DECLARE @sql_rename_user NVARCHAR(MAX) = 'ALTER USER [' + @nombre_anterior + '] WITH NAME = [' + @nombre_usuario + ']';
+				EXEC (@sql_rename_user);
+		END
+
+		-- Actualizar contraseña del login
+		DECLARE @sql_password NVARCHAR(MAX) = '
+			ALTER LOGIN [' + @nombre_usuario + '] WITH PASSWORD = ''' + @clave + '''';
+		EXEC (@sql_password);
+
+		-- Reasignar al rol
+		DECLARE @sql_role NVARCHAR(MAX) = '
+			ALTER ROLE [' + @rol + '] ADD MEMBER [' + @nombre_usuario + ']';
+		EXEC (@sql_role);
 
 		PRINT 'Usuario modificado con éxito.';
 	END TRY
@@ -1935,11 +2004,11 @@ BEGIN
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
-END; --------T
+END; 
 GO
 
 
-CREATE PROCEDURE eAdministrativos.EliminarUsuario
+CREATE OR ALTER PROCEDURE eAdministrativos.EliminarUsuario
 	@id_usuario INT
 AS
 BEGIN
@@ -1950,17 +2019,32 @@ BEGIN
 		IF NOT EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario)
 			THROW 50001, 'El usuario no existe.', 1;
 
-
-	--Eliminar
+	--Obtener nombre de usuario
+	DECLARE @nombre_usuario NVARCHAR(50);
+	SELECT @nombre_usuario = nombre_usuario FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario;
+	
+	--Eliminar usuario 
 	DELETE FROM eAdministrativos.UsuarioAdministrativo
 	WHERE id_usuario = @id_usuario
 
-	PRINT 'Usuario eliminado con éxito.';
+	-- Eliminar USER de base de datos
+		DECLARE @sql_drop_user NVARCHAR(MAX) = '
+			IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name = ''' + @nombre_usuario + ''')
+			DROP USER [' + @nombre_usuario + ']';
+		EXEC (@sql_drop_user);
+
+		-- Eliminar LOGIN del servidor
+		DECLARE @sql_drop_login NVARCHAR(MAX) = '
+			IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = ''' + @nombre_usuario + ''')
+			DROP LOGIN [' + @nombre_usuario + ']';
+		EXEC (@sql_drop_login);
+
+		PRINT 'Usuario eliminado con éxito.';
 	END TRY
 	BEGIN CATCH
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
-END; --------T
+END; 
 GO
 
