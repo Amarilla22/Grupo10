@@ -12,12 +12,11 @@ Integrantes:
 - Fleita Thiago , DNI: 45233264
 */
 
-use Com5600G10
-go
+USE Com5600G10
+GO
 
 
-
-CREATE PROCEDURE eSocios.insertarSocio
+CREATE OR ALTER PROCEDURE eSocios.insertarSocio
     @id_grupo_familiar INT,
     @dni VARCHAR(15),
     @nombre VARCHAR(50),
@@ -73,7 +72,7 @@ END
 GO
 
 
-CREATE PROCEDURE eSocios.EliminarSocio
+CREATE OR ALTER PROCEDURE eSocios.EliminarSocio
 	@id_socio INT
 AS
 BEGIN
@@ -98,7 +97,7 @@ END; --------T
 GO
 
 
-CREATE PROCEDURE eSocios.ModificarSocio
+CREATE OR ALTER PROCEDURE eSocios.ModificarSocio
 	@id_socio INT,
 	@nombre VARCHAR(50),
 	@apellido VARCHAR(50),
@@ -145,7 +144,7 @@ GO
 
 --Verifica que exista un socio con el ID dado y luego de eso le asigna la actividad indicada por ID en la tabla Realiza
 
-CREATE PROCEDURE eSocios.AsignarActividad
+CREATE OR ALTER PROCEDURE eSocios.AsignarActividad
 		@id_socio INT,
 		@id_actividad INT
 	AS
@@ -679,7 +678,7 @@ END
 GO
 
 	-- elimina a un socio de una actividad
-CREATE PROCEDURE eSocios.DesinscribirActividad
+CREATE OR ALTER PROCEDURE eSocios.DesinscribirActividad
 		@id_socio INT,
 		@id_actividad INT
 	AS
@@ -698,12 +697,12 @@ CREATE PROCEDURE eSocios.DesinscribirActividad
 			THROW 50000, @ErrorMessage, 1;
 		END CATCH
 	END;
-	GO
+GO
 
 
 -- crea un nuevo grupo familiar asignando un adulto responsable
 -- verifica que el adulto no tenga ya un grupo familiar asignado
-CREATE PROCEDURE eSocios.CrearGrupoFamiliar
+CREATE OR ALTER PROCEDURE eSocios.CrearGrupoFamiliar
     @id_adulto_responsable INT
 AS
 BEGIN
@@ -761,7 +760,7 @@ GO
 
 -- agrega un miembro a un grupo familiar existente
 -- verifica que el miembro no pertenezca ya a otro grupo
-CREATE PROCEDURE eSocios.AgregarMiembroAGrupoFamiliar
+CREATE OR ALTER PROCEDURE eSocios.AgregarMiembroAGrupoFamiliar
     @id_grupo INT,
     @id_socio INT
 AS
@@ -821,7 +820,7 @@ GO
 
 
 -- asigna tutor para socio menor
-CREATE PROCEDURE eSocios.AsignarTutor
+CREATE OR ALTER PROCEDURE eSocios.AsignarTutor
     @id_socio INT,
     @nombre VARCHAR(50),
     @apellido VARCHAR(50),
@@ -874,7 +873,7 @@ GO
 -- asigna un tutor a un socio menor, tomando los datos de un socio existente
 -- el socio tutor debe ser mayor de edad (categoria 'Mayor')
 -- el socio al que se le asigna el tutor debe ser menor de edad (categoria 'Menor' o 'Cadete')
-CREATE PROCEDURE eSocios.AsignarTutorDesdeSocio
+CREATE OR ALTER PROCEDURE eSocios.AsignarTutorDesdeSocio
     @id_socio_menor INT,
     @id_socio_tutor INT,
     @parentesco VARCHAR(20)
@@ -963,7 +962,7 @@ END; --------------
 GO
 
 
-CREATE PROCEDURE eSocios.ModificarTutor
+CREATE OR ALTER PROCEDURE eSocios.ModificarTutor
 		@id_tutor INT,
 		@nombre VARCHAR(50),
 		@apellido VARCHAR(50),
@@ -1007,10 +1006,10 @@ CREATE PROCEDURE eSocios.ModificarTutor
 			THROW 50000, @ErrorMessage, 1;
 		END CATCH
 	END; ----R
-	GO
+GO
 
 
-CREATE PROCEDURE eSocios.EliminarTutor
+CREATE OR ALTER PROCEDURE eSocios.EliminarTutor
 		@id_tutor INT
 	AS
 	BEGIN
@@ -1038,7 +1037,7 @@ CREATE PROCEDURE eSocios.EliminarTutor
 	GO
 
 
--- SP para generar factura con los descuentos correspondientes
+-- SP para generar factura mensual con el total de actividades y membresia 
 CREATE OR ALTER PROCEDURE eCobros.generarFactura
     @id_socio INT,
     @periodo VARCHAR(20), -- formato: 'MM/YYYY'
@@ -1047,87 +1046,81 @@ AS
 BEGIN
     SET NOCOUNT ON;
     
+    --verifica que el socio existe
+    IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
+    BEGIN
+        PRINT CONCAT('Error: El socio con ID ', @id_socio, ' no existe.');
+        RETURN -1;
+    END;
+    
+    --obtiene el grupo y categoria
+    DECLARE @id_grupo_familiar INT, @id_categoria INT, @costo_membresia DECIMAL(10,2);
+    
+    SELECT 
+        @id_grupo_familiar = id_grupo_familiar,
+        @id_categoria = id_categoria
+    FROM eSocios.Socio
+    WHERE id_socio = @id_socio;
+    
+    --valida que la categoria existe y tiene costo
+    SELECT @costo_membresia = costo_mensual 
+    FROM eSocios.Categoria 
+    WHERE id_categoria = @id_categoria;
+
+    IF @costo_membresia IS NULL
+    BEGIN
+        PRINT CONCAT('Error: La categoría con ID ', @id_categoria, ' no existe o no tiene costo definido.');
+        RETURN -1;
+    END;
+    
+
+    DECLARE @id_factura INT;
     BEGIN TRY
         BEGIN TRANSACTION;
         
-        -- establecer fecha por defecto si no se proporciona
+        -- establece fecha por defecto si no se proporciona
         IF @fecha_emision IS NULL 
             SET @fecha_emision = GETDATE();
         
-        -- calcular fechas de vencimiento
+        -- calcula fechas de vencimiento
         DECLARE @fecha_venc_1 DATE = DATEADD(DAY, 5, @fecha_emision);
         DECLARE @fecha_venc_2 DATE = DATEADD(DAY, 5, @fecha_venc_1);
         
         -- variables de calculo
-        DECLARE @total DECIMAL(10,2) = 0;
+        DECLARE @total_membresias DECIMAL(10,2) = @costo_membresia;
         DECLARE @porcentaje_descuento_familiar DECIMAL(5,2) = 0;
         DECLARE @porcentaje_descuento_actividades DECIMAL(5,2) = 0;
-        DECLARE @total_membresias DECIMAL(10,2) = 0;
-        DECLARE @total_actividades DECIMAL(10,2) = 0;
-        DECLARE @id_grupo_familiar INT;
-        DECLARE @id_categoria INT;
-        DECLARE @costo_membresia DECIMAL(10,2);
-        DECLARE @id_factura INT;
         
-        -- verificar que el socio existe
-        IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
-        BEGIN
-            RAISERROR('El socio con ID %d no existe', 16, 1, @id_socio);
-            RETURN;
-        END;
-        
-        -- obtener datos del socio
-        SELECT 
-            @id_grupo_familiar = id_grupo_familiar,
-            @id_categoria = id_categoria
-        FROM eSocios.Socio
-        WHERE id_socio = @id_socio;
-        
-        -- obtener costo de la membresia
-        SELECT @costo_membresia = costo_mensual 
-        FROM eSocios.Categoria 
-        WHERE id_categoria = @id_categoria;
-        
-        -- validar que la categoria existe
-        IF @costo_membresia IS NULL
-        BEGIN
-            RAISERROR('La categoría con ID %d no existe o no tiene costo definido', 16, 1, @id_categoria);
-            RETURN;
-        END;
-        
-        SET @total_membresias = @costo_membresia;
+        -- aplica o no descuento familiar 
+        IF @id_grupo_familiar IS NOT NULL
+            SELECT @porcentaje_descuento_familiar = ISNULL(descuento, 0)
+            FROM eSocios.GrupoFamiliar
+            WHERE id_grupo = @id_grupo_familiar;
         
         -- calcular total de actividades
+        DECLARE @total_actividades DECIMAL(10,2) = 0;
         SELECT @total_actividades = ISNULL(SUM(a.costo_mensual), 0)
         FROM eSocios.Realiza sa
         JOIN eSocios.Actividad a ON sa.id_actividad = a.id_actividad
         WHERE sa.socio = @id_socio;
         
-        -- aplicar descuento familiar (15%)
-        IF @id_grupo_familiar IS NOT NULL
-            SET @porcentaje_descuento_familiar = 15;
-        
-        -- aplicar descuento por multiples actividades (10%)
-        DECLARE @cant_actividades INT;
-        SELECT @cant_actividades = COUNT(*)
-        FROM eSocios.Realiza
-        WHERE socio = @id_socio;
-        
-        IF @cant_actividades > 1
+        -- descuento por multiples actividades
+        IF (SELECT COUNT(*) FROM eSocios.Realiza WHERE socio = @id_socio) > 1
             SET @porcentaje_descuento_actividades = 10;
         
-        -- calcular total con descuentos
-        DECLARE @total_con_descuentos DECIMAL(10,2) = 0;
-        SET @total_con_descuentos = 
+        -- calcula total con descuentos
+        DECLARE @total_con_descuentos DECIMAL(10,2) = 
             @total_membresias * (1 - @porcentaje_descuento_familiar / 100) +
             @total_actividades * (1 - @porcentaje_descuento_actividades / 100);
         
-        -- crear la factura con todos los valores calculados
-        INSERT INTO eCobros.Factura (
+        -- inserta factura
+        INSERT INTO eCobros.Factura 
+		(
             id_socio, fecha_emision, fecha_venc_1, fecha_venc_2, 
             estado, total, recargo_venc, descuentos
         )
-        VALUES (
+        VALUES 
+		(
             @id_socio, @fecha_emision, @fecha_venc_1, @fecha_venc_2, 
             'pendiente', @total_con_descuentos, 0, 
             @porcentaje_descuento_familiar + @porcentaje_descuento_actividades
@@ -1136,22 +1129,32 @@ BEGIN
         SET @id_factura = SCOPE_IDENTITY();
         
         -- insertar item de membresia
-        INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
-        VALUES (@id_factura, 'membresia', @costo_membresia, @periodo);
+        DECLARE @nombre_categoria VARCHAR(50);
+        SELECT @nombre_categoria = nombre
+        FROM eSocios.Categoria
+        WHERE id_categoria = @id_categoria;
         
-        -- insertar items por actividades asignadas
+        INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
+        VALUES (
+            @id_factura, 
+            CONCAT('Membresía - ', @nombre_categoria), 
+            @costo_membresia, 
+            @periodo
+        );
+        
+        -- insertar items por actividades
         INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
         SELECT 
             @id_factura, 
-            'actividad', 
+            a.nombre,      
             a.costo_mensual, 
             @periodo
         FROM eSocios.Realiza sa
         JOIN eSocios.Actividad a ON sa.id_actividad = a.id_actividad
         WHERE sa.socio = @id_socio;
-                
-        COMMIT TRANSACTION;
         
+        COMMIT TRANSACTION;
+		PRINT CONCAT('Factura generada correctamente con ID: ', @id_factura);
         RETURN @id_factura;
     END TRY
     BEGIN CATCH
@@ -1262,46 +1265,37 @@ GO
 
 
 --borrado logico para factura
-CREATE PROCEDURE eCobros.anularFactura
+CREATE OR ALTER PROCEDURE eCobros.anularFactura
     @id_factura INT
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    BEGIN TRY
-        BEGIN TRANSACTION;
 
-        -- verificar que la factura exista y no este anulada
-        IF NOT EXISTS (
-            SELECT 1 
-            FROM eCobros.Factura 
-            WHERE id_factura = @id_factura AND estado <> 'anulada'
-        )
-        BEGIN
-            RAISERROR('la factura no existe o ya esta anulada', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
+    -- verificar que la factura exista y no esté anulada
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM eCobros.Factura 
+        WHERE id_factura = @id_factura AND estado <> 'anulada'
+    )
+    BEGIN
+        PRINT 'La factura no existe o ya está anulada.';
+        RETURN;
+    END
 
-        -- actualizar estado a anulada
-        UPDATE eCobros.Factura
-        SET estado = 'anulada'
-        WHERE id_factura = @id_factura;
+    -- actualizar estado a anulada
+    UPDATE eCobros.Factura
+    SET estado = 'anulada'
+    WHERE id_factura = @id_factura;
 
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-
-        THROW;
-    END CATCH
-END; 
+    -- Confirmación
+    PRINT 'Factura ' + CAST(@id_factura AS VARCHAR(10)) + ' anulada correctamente.';
+END;
 GO
 
 
-
-CREATE PROCEDURE eCobros.RegistrarEntradaPileta
+--registra una entrada a la pileta y se ascocia a una factura
+CREATE OR ALTER PROCEDURE eCobros.RegistrarEntradaPileta
     @id_socio INT,
     @fecha DATE = NULL,
     @tipo VARCHAR(8), -- 'socio' o 'invitado'
@@ -1309,40 +1303,52 @@ CREATE PROCEDURE eCobros.RegistrarEntradaPileta
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Valida que el socio existe
+	IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
+    BEGIN
+        PRINT 'Error: El socio especificado no existe.';
+        RETURN;
+    END
+
+    -- valida tipo de entrada
+    IF @tipo NOT IN ('socio', 'invitado')
+    BEGIN
+        PRINT 'Error: Tipo de entrada no válido. Debe ser "socio" o "invitado".';
+        RETURN;
+    END
     
+    -- establece fecha por defecto (hoy)
+    IF @fecha IS NULL
+		SET @fecha = CONVERT(DATE, GETDATE());
+
+
+    -- verifica morosidad 
+	IF EXISTS
+	(
+		SELECT 1
+        FROM eCobros.Factura
+        WHERE id_socio = @id_socio
+          AND estado = 'pendiente'
+          AND fecha_venc_2 < @fecha
+    )
+    BEGIN
+        PRINT 'Error: El socio tiene cuotas impagas y no puede acceder a la pileta.';
+        RETURN;
+    END
+
+    -- determina monto según tipo y tarifas
+    DECLARE @monto DECIMAL(10,2);
+        
+    IF @tipo = 'socio'
+        SET @monto =  500.00 -- valor por defecto para socios
+    ELSE
+        SET @monto =  800.00 -- valor por defecto para invitados
+
+
     BEGIN TRY
         BEGIN TRANSACTION;
-        
-        -- Valida que el socio existe
-        IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
-            THROW 50001, 'El socio especificado no existe', 1;
-            
-        -- valida tipo de entrada
-        IF @tipo NOT IN ('socio', 'invitado')
-            THROW 50002, 'Tipo de entrada no válido. Debe ser "socio" o "invitado"', 1;
-            
-        -- establece fecha por defecto (hoy)
-        IF @fecha IS NULL
-            SET @fecha = CONVERT(DATE, GETDATE());
-            
-        -- determina monto según tipo y tarifas
-        DECLARE @monto DECIMAL(10,2);
-        
-        IF @tipo = 'socio'
-            SET @monto =  500.00 -- valor por defecto para socios
-        ELSE
-            SET @monto =  800.00 -- valor por defecto para invitados
-            
-        -- verifica morosidad 
-        IF  EXISTS (
-            SELECT 1 
-            FROM eCobros.Factura 
-            WHERE id_socio = @id_socio 
-              AND estado = 'pendiente'
-              AND fecha_venc_2 < @fecha
-        )
-            THROW 50003, 'El socio tiene cuotas impagas y no puede acceder a la pileta', 1;
-            
+  
         -- crea factura si no existe una para hoy
         DECLARE @id_factura INT;
         DECLARE @id_item INT;
@@ -1357,10 +1363,12 @@ BEGIN
         IF @id_factura IS NULL
         BEGIN
             -- crea nueva factura
-            INSERT INTO eCobros.Factura (
+            INSERT INTO eCobros.Factura 
+			(
                 id_socio, fecha_emision, fecha_venc_1, fecha_venc_2, estado, total
             )
-            VALUES (
+            VALUES 
+			(
                 @id_socio, @fecha, DATEADD(DAY, 5, @fecha), DATEADD(DAY, 10, @fecha), 'pendiente', 0
             );
             
@@ -1368,11 +1376,13 @@ BEGIN
         END
         
         -- crea ítem en factura para la entrada
-        INSERT INTO eCobros.ItemFactura (
+        INSERT INTO eCobros.ItemFactura 
+		(
             id_factura, concepto, monto, periodo
         )
-        VALUES (
-            @id_factura, 'pileta', @monto, FORMAT(@fecha, 'yyyyMM')
+        VALUES 
+		(
+            @id_factura, 'Entrada Pileta - ' + @tipo, @monto, FORMAT(@fecha, 'yyyyMM')
         );
         
         SET @id_item = SCOPE_IDENTITY();
@@ -1382,192 +1392,121 @@ BEGIN
         SET total = total + @monto
         WHERE id_factura = @id_factura;
         
+        
+        -- aplica reembolso automático si hay lluvia
+		DECLARE @reembolso DECIMAL(10,2) = 0
+        IF @lluvia = 1
+        BEGIN
+            SET @reembolso = @monto * 0.6; -- 60% de reembolso
+            
+            -- crea ítem en factura para el reembolso
+            INSERT INTO eCobros.ItemFactura 
+			(
+                id_factura, concepto, monto, periodo
+            )
+            VALUES 
+			(
+                @id_factura, 'Reembolso Por Lluvia Entrada Pileta - ' + @tipo, -@reembolso, FORMAT(@fecha, 'yyyyMM')
+            );
+
+            -- resta el reembolso al total
+            UPDATE eCobros.Factura
+            SET total = total - @reembolso
+            WHERE id_factura = @id_factura;
+        END
+
         -- registra la entrada a la pileta
-        INSERT INTO eCobros.EntradaPileta (
+        INSERT INTO eCobros.EntradaPileta 
+		(
             id_socio, id_item_factura, fecha, monto, tipo, lluvia
         )
         VALUES (
-            @id_socio, @id_item, @fecha, @monto, @tipo, @lluvia
+            @id_socio, @id_item, @fecha, @monto - @reembolso, @tipo, @lluvia
         );
-        
-        -- aplica reembolso automático si hay lluvia
-        IF @lluvia = 1
-        BEGIN
-            DECLARE @reembolso DECIMAL(10,2) = @monto * 0.6; -- 60% de reembolso
-            
-            -- crea factura de reembolso
-            DECLARE @id_factura_reembolso INT;
-            
-            INSERT INTO eCobros.Factura (
-                id_socio, fecha_emision, fecha_venc_1, fecha_venc_2, estado, total
-            )
-            VALUES (
-                @id_socio, @fecha, @fecha, @fecha, 'pagada', -@reembolso
-            );
-            
-            SET @id_factura_reembolso = SCOPE_IDENTITY();
-            
-            -- crea ítem en factura para el reembolso
-            INSERT INTO eCobros.ItemFactura (
-                id_factura, concepto, monto, periodo
-            )
-            VALUES (
-                @id_factura_reembolso, 'pileta', -@reembolso, FORMAT(@fecha, 'yyyyMM')
-            );
-            
-            -- registra pago del reembolso (como saldo a favor)
-            INSERT INTO eCobros.Pago (
-                id_pago, id_factura, medio_pago, monto, fecha, estado, debito_auto
-            )
-            VALUES (
-                NEXT VALUE FOR seq_pagos, @id_factura_reembolso, 'reembolso', @reembolso, @fecha, 'completado', 0
-            );
-        END
-        
+		
         COMMIT TRANSACTION;
-        
-        SELECT 
-            SCOPE_IDENTITY() AS id_entrada,
-            @monto AS monto_cobrado,
-            CASE WHEN @lluvia = 1 THEN @monto * 0.6 ELSE 0 END AS monto_reembolsado,
-            'Entrada registrada correctamente' AS mensaje;
+        PRINT 'La entrada a la pileta se registró correctamente.';
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
-            
-        DECLARE @ErrorNumber INT = ERROR_NUMBER();
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW;
+
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
     END CATCH
-END; 
+END;
 GO
 
-
-
-CREATE PROCEDURE eCobros.AnularEntradaPileta
-    @id_entrada INT,
-    @aplicar_reembolso BIT = 0 -- indica si se debe aplicar reembolso
+--reembolsa una entrada a la pileta
+CREATE OR ALTER PROCEDURE eCobros.AnularEntradaPileta
+    @id_entrada INT
 AS
 BEGIN
     SET NOCOUNT ON;
-    
+
+    -- Validar que la entrada exista 
+    IF NOT EXISTS 
+	(
+        SELECT 1 FROM eCobros.EntradaPileta
+        WHERE id_entrada = @id_entrada 
+    )
+    BEGIN
+        PRINT 'Error: La entrada no existe';
+        RETURN;
+    END
+
     BEGIN TRY
         BEGIN TRANSACTION;
-        
-        DECLARE @id_item_factura INT;
-        DECLARE @monto DECIMAL(10,2);
-        DECLARE @id_factura INT;
-        DECLARE @fecha DATE;
-        DECLARE @tipo VARCHAR(8);
-        DECLARE @id_socio INT;
-        DECLARE @lluvia BIT;
-        DECLARE @estado_factura VARCHAR(20);
-        
-        SELECT 
-            @id_item_factura = ep.id_item_factura,
-            @monto = ep.monto,
-            @id_factura = it.id_factura,
-            @fecha = ep.fecha,
+
+        -- Obtener datos de la entrada y factura relacionada
+        DECLARE 
+            @id_item INT,
+            @id_factura INT,
+            @monto DECIMAL(10,2),
+            @tipo VARCHAR(8),
+            @fecha DATE;
+
+		SELECT 
+            @id_item = ep.id_item_factura,
+            @monto  = ep.monto,
             @tipo = ep.tipo,
-            @id_socio = ep.id_socio,
-            @lluvia = ep.lluvia,
-            @estado_factura = f.estado
-        FROM eCobros.EntradaPileta ep
-        JOIN eCobros.ItemFactura it ON ep.id_item_factura = it.id_item
-        JOIN eCobros.Factura f ON it.id_factura = f.id_factura
+            @fecha = ep.fecha,
+            @id_factura = it.id_factura
+        FROM eCobros.ItemFactura it 
+        INNER JOIN eCobros.EntradaPileta ep ON ep.id_item_factura = it.id_item
         WHERE ep.id_entrada = @id_entrada;
-        
-        -- valida que la entrada existe
-        IF @id_item_factura IS NULL
-            THROW 50001, 'La entrada especificada no existe', 1;
-            
-        -- valida que no sea una entrada ya reembolsada por lluvia
-        IF @lluvia = 1
-            THROW 50002, 'No se puede anular una entrada con reembolso por lluvia procesado', 1;
-            
-        -- valida que la factura no esté pagada
-        IF @estado_factura = 'pagada' AND @aplicar_reembolso = 0
-            THROW 50003, 'La factura asociada ya está pagada. Use @aplicar_reembolso=1 para generar reembolso', 1;
-        
-        -- elimina el registro de entrada
-        DELETE FROM eCobros.EntradaPileta
-        WHERE id_entrada = @id_entrada;
-        
-        -- elimina el ítem de factura
-        DELETE FROM eCobros.ItemFactura
-        WHERE id_item = @id_item_factura;
-        
-        -- actualiza total de la factura
+
+        -- inserta reembolso en factura
+        INSERT INTO eCobros.ItemFactura 
+		(
+            id_factura, concepto, monto, periodo
+        )
+        VALUES 
+		(
+            @id_factura, 'Reembolso Entrada Pileta - ' + @tipo, -@monto, FORMAT(@fecha, 'yyyyMM')
+        );
+
+        -- Actualizar total factura restando monto
         UPDATE eCobros.Factura
         SET total = total - @monto
         WHERE id_factura = @id_factura;
-        
-        -- si la factura queda sin ítems, se anula
-        IF NOT EXISTS (
-            SELECT 1 
-            FROM eCobros.ItemFactura 
-            WHERE id_factura = @id_factura
-        )
-            DELETE FROM eCobros.Factura
-            WHERE id_factura = @id_factura;
-            
-        -- aplica el reembolso si corresponde
-        IF @aplicar_reembolso = 1 AND @estado_factura = 'pagada'
-        BEGIN
-            DECLARE @reembolso DECIMAL(10,2) = @monto;
-            
-            -- crea factura de reembolso
-            DECLARE @id_factura_reembolso INT;
-            
-            INSERT INTO eCobros.Factura (
-                id_socio, fecha_emision, fecha_venc_1, fecha_venc_2, estado, total
-            )
-            VALUES (
-                @id_socio, GETDATE(), GETDATE(), GETDATE(), 'pagada', -@reembolso
-            );
-            
-            SET @id_factura_reembolso = SCOPE_IDENTITY();
-            
-            -- crea ítem en factura para el reembolso
-            INSERT INTO eCobros.ItemFactura (
-                id_factura, concepto, monto, periodo
-            )
-            VALUES (
-                @id_factura_reembolso, 'pileta', -@reembolso, FORMAT(@fecha, 'yyyyMM')
-            );
-            
-            -- registra el pago del reembolso (como saldo a favor)
-            INSERT INTO eCobros.Pago (
-                id_pago, id_factura, medio_pago, monto, fecha, estado, debito_auto
-            )
-            VALUES (
-                NEXT VALUE FOR seq_pagos, @id_factura_reembolso, 'reembolso', @reembolso, GETDATE(), 'completado', 0
-            );
-        END
-        
+
         COMMIT TRANSACTION;
-        
-        SELECT 
-            1 AS resultado,
-            'Entrada anulada correctamente' AS mensaje,
-            @monto AS monto_anulado,
-            CASE WHEN @aplicar_reembolso = 1 AND @estado_factura = 'pagada' THEN @monto ELSE 0 END AS monto_reembolsado;
+
+        PRINT 'Entrada anulada y reembolso aplicado correctamente.';
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
-            
-        DECLARE @ErrorNumber INT = ERROR_NUMBER();
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();     
-        THROW;
+
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
     END CATCH
 END;
 GO
 
 
-CREATE PROCEDURE eCobros.CargarPago
-    @id_pago INT,
+
+--genera un pago asociado a una factura
+CREATE OR ALTER PROCEDURE eCobros.CargarPago
     @id_factura INT,
     @medio_pago VARCHAR(50),
     @monto DECIMAL(10,2),
@@ -1582,43 +1521,44 @@ BEGIN
     DECLARE @total_factura DECIMAL(10,2);
     DECLARE @total_pagado DECIMAL(10,2) = 0;
     DECLARE @fecha_pago DATE;
+	DECLARE @id_pago INT;
     
+    -- Validar que la factura existe y obtener su estado y total
+    SELECT @estado_factura = estado, 
+            @total_factura = total
+    FROM eCobros.Factura 
+    WHERE id_factura = @id_factura;
+        
+    -- Si no se encontró la factura, @estado_factura será NULL
+    IF @estado_factura IS NULL
+    BEGIN
+        PRINT 'La factura especificada no existe.';
+        RETURN;
+    END
+
+    -- Validar que la factura no esté anulada
+    IF @estado_factura = 'anulada'
+    BEGIN
+        PRINT 'No se puede registrar un pago para una factura anulada.';
+        RETURN;
+    END
+
+    -- Validar que la factura no esté ya completamente pagada
+    IF @estado_factura = 'pagada'
+    BEGIN
+        PRINT 'La factura ya se encuentra completamente pagada.';
+        RETURN;
+    END
+
     BEGIN TRY
-        BEGIN TRANSACTION;
+        BEGIN TRANSACTION
         
         -- Si no se proporciona fecha, usar la fecha actual
         IF @fecha IS NULL
             SET @fecha_pago = GETDATE();
         ELSE
             SET @fecha_pago = @fecha;
-        
-        -- Validar que la factura existe y obtener su estado y total
-        SELECT @estado_factura = estado, 
-               @total_factura = total
-        FROM eCobros.Factura 
-        WHERE id_factura = @id_factura;
-        
-        -- Si no se encontró la factura, @estado_factura será NULL
-        IF @estado_factura IS NULL
-        BEGIN
-            THROW 50001, 'La factura especificada no existe.', 1;
-            RETURN;
-        END
-        
-        -- Validar que la factura no esté anulada
-        IF @estado_factura = 'anulada'
-        BEGIN
-            THROW 50001, 'No se puede registrar un pago para una factura anulada.', 1;
-            RETURN;
-        END
-        
-        -- Validar que la factura no esté ya completamente pagada
-        IF @estado_factura = 'pagada'
-        BEGIN
-            THROW 50001, 'La factura ya se encuentra completamente pagada.', 1;
-            RETURN;
-        END
-        
+  
         -- Calcular el total ya pagado para esta factura
         SELECT @total_pagado = ISNULL(SUM(monto), 0)
         FROM eCobros.Pago 
@@ -1637,16 +1577,10 @@ BEGIN
             RETURN;
         END
         
-        -- Validar que el id_pago no exista (si se proporciona)
-        IF EXISTS (SELECT 1 FROM eCobros.Pago WHERE id_pago = @id_pago)
-        BEGIN
-            THROW 50001, 'Ya existe un pago con el ID especificado.', 1;
-            RETURN;
-        END
         
         -- Insertar el pago
-        INSERT INTO eCobros.Pago (
-            id_pago, 
+        INSERT INTO eCobros.Pago 
+		(
             id_factura, 
             medio_pago, 
             monto, 
@@ -1655,7 +1589,6 @@ BEGIN
             debito_auto
         )
         VALUES (
-            @id_pago,
             @id_factura,
             @medio_pago,
             @monto,
@@ -1671,7 +1604,9 @@ BEGIN
             SET estado = 'pagada' 
             WHERE id_factura = @id_factura;
         END
-        
+
+        SET @id_pago = SCOPE_IDENTITY();
+
         COMMIT TRANSACTION;
         
         -- Mensaje de éxito
@@ -1701,10 +1636,10 @@ BEGIN
         THROW 50000, @ErrorMessage, @ErrorState;
     END CATCH
 END
-go
+GO
 
-
-CREATE PROCEDURE eCobros.AnularPago --Actualiza factura
+--bprrado logico de pago
+CREATE OR ALTER PROCEDURE eCobros.AnularPago 
     @id_pago INT
 AS
 BEGIN
@@ -1795,101 +1730,173 @@ BEGIN
 END
 GO
 
-
-CREATE PROCEDURE eCobros.BorradoLogicoReembolso
-    @id_reembolso INT,
-    @motivo_baja VARCHAR(100) = 'ELIMINADO LOGICAMENTE'
+--genera un reembolso para un pago
+CREATE OR ALTER PROCEDURE eCobros.GenerarReembolso
+    @id_pago INT,
+    @monto DECIMAL(10,2),
+    @motivo VARCHAR(100),
+    @fecha DATE = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Validaciones
+    DECLARE @estado_pago VARCHAR(20);
+    DECLARE @monto_pago DECIMAL(10,2);
+    DECLARE @total_reembolsado DECIMAL(10,2) = 0;
+    DECLARE @fecha_reembolso DATE;
+
     BEGIN TRY
         BEGIN TRANSACTION;
-        
-        -- Validar que el reembolso existe y no está marcado como eliminado
-        IF NOT EXISTS (
-            SELECT 1 
-            FROM eCobros.Reembolso 
-            WHERE id_reembolso = @id_reembolso 
-            AND motivo NOT LIKE 'ELIMINADO:%'
-        )
-        BEGIN
-            THROW 50010, 'El reembolso no existe o ya está eliminado lógicamente', 1;
-        END
-        
-        -- Obtener información del reembolso
-        DECLARE @id_pago INT;
-        DECLARE @monto_reembolso DECIMAL(10,2);
-        DECLARE @motivo_original VARCHAR(100);
-        
-        SELECT @id_pago = id_pago, @monto_reembolso = monto, @motivo_original = motivo
-        FROM eCobros.Reembolso 
-        WHERE id_reembolso = @id_reembolso;
-        
-        -- Marcar como eliminado modificando el motivo
-        UPDATE eCobros.Reembolso 
-        SET motivo = 'ELIMINADO: ' + @motivo_original
-        WHERE id_reembolso = @id_reembolso;
-        
-        -- Recalcular el total de reembolsos activos para el pago (excluyendo eliminados)
-        DECLARE @total_reembolsos_activos DECIMAL(10,2) = 0;
-        SELECT @total_reembolsos_activos = ISNULL(SUM(monto), 0)
-        FROM eCobros.Reembolso 
-        WHERE id_pago = @id_pago AND motivo NOT LIKE 'ELIMINADO:%';
-        
-        -- Obtener el monto del pago original
-        DECLARE @monto_pago DECIMAL(10,2);
-        SELECT @monto_pago = monto 
-        FROM eCobros.Pago 
+
+        -- Obtener estado y monto del pago
+        SELECT @estado_pago = estado, @monto_pago = monto
+        FROM eCobros.Pago
         WHERE id_pago = @id_pago;
-        
-        -- Actualizar el estado del pago según los reembolsos activos
-        IF @total_reembolsos_activos = 0
+
+        IF @estado_pago IS NULL
         BEGIN
-            -- No hay reembolsos activos, volver a estado completado
-            UPDATE eCobros.Pago 
-            SET estado = 'completado' 
+            PRINT 'Error: El pago especificado no existe.';
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+
+        IF @estado_pago = 'anulado'
+        BEGIN
+            PRINT 'Error: No se puede reembolsar un pago anulado.';
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+
+        -- Calcular total ya reembolsado para el pago
+        SELECT @total_reembolsado = ISNULL(SUM(monto), 0)
+        FROM eCobros.Reembolso
+        WHERE id_pago = @id_pago;
+
+        -- Validar que el nuevo reembolso no supere el total pagado
+        IF (@total_reembolsado + @monto) > @monto_pago
+        BEGIN
+            PRINT 'Error: El monto del reembolso excede el total del pago original.';
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+
+        -- Fecha por defecto
+        IF @fecha IS NULL
+            SET @fecha_reembolso = CONVERT(DATE, GETDATE());
+        ELSE
+            SET @fecha_reembolso = @fecha;
+
+        -- Insertar el reembolso
+        INSERT INTO eCobros.Reembolso (id_pago, monto, motivo, fecha)
+        VALUES (@id_pago, @monto, @motivo, @fecha_reembolso);
+
+        -- Determinar nuevo estado del pago
+        IF (@total_reembolsado + @monto) = @monto_pago
+        BEGIN
+            -- Reembolso total
+            UPDATE eCobros.Pago
+            SET estado = 'reembolsado'
             WHERE id_pago = @id_pago;
         END
-        ELSE IF @total_reembolsos_activos < @monto_pago
+        ELSE
         BEGIN
-            -- Reembolso parcial, mantener como completado
-            UPDATE eCobros.Pago 
-            SET estado = 'completado' 
+            -- Reembolso parcial, se mantiene en estado 'completado'
+            UPDATE eCobros.Pago
+            SET estado = 'completado'
             WHERE id_pago = @id_pago;
         END
-        ELSE IF @total_reembolsos_activos = @monto_pago
-        BEGIN
-            -- Reembolso total, mantener como reembolsado
-            UPDATE eCobros.Pago 
-            SET estado = 'reembolsado' 
-            WHERE id_pago = @id_pago;
-        END
-        
+
         COMMIT TRANSACTION;
-        
-        PRINT 'Reembolso eliminado lógicamente de forma correcta';
-        SELECT 
-            'SUCCESS' AS Result, 
-            @id_reembolso AS ReembolsoId,
-            @monto_reembolso AS MontoReembolso,
-            @total_reembolsos_activos AS TotalReembolsosActivos,
-            @monto_pago AS MontoPago;
-        
+
+        PRINT 'Reembolso registrado exitosamente.';
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
-            
-        -- Capturar y relanzar el error
+
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
-        DECLARE @ErrorState INT = ERROR_STATE();
-        
-        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+        PRINT 'Error inesperado: ' + @ErrorMessage;
     END CATCH
-END; ----R
+END;
 GO
 
+
+--cancela un reembolso
+CREATE OR ALTER PROCEDURE eCobros.EliminarReembolso
+    @id_reembolso INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- Validar que el reembolso existe
+        IF NOT EXISTS (
+            SELECT 1 
+            FROM eCobros.Reembolso 
+            WHERE id_reembolso = @id_reembolso
+        )
+        BEGIN
+            PRINT 'Error: El reembolso no existe.';
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+
+        -- Obtener información del reembolso
+        DECLARE @id_pago INT;
+        SELECT @id_pago = id_pago
+        FROM eCobros.Reembolso
+        WHERE id_reembolso = @id_reembolso;
+
+        -- Eliminar el reembolso
+        DELETE FROM eCobros.Reembolso 
+        WHERE id_reembolso = @id_reembolso;
+
+        -- Recalcular los reembolsos activos
+        DECLARE @total_reembolsado DECIMAL(10,2) = 0;
+        SELECT @total_reembolsado = ISNULL(SUM(monto), 0)
+        FROM eCobros.Reembolso
+        WHERE id_pago = @id_pago;
+
+        -- Obtener el monto original del pago
+        DECLARE @monto_pago DECIMAL(10,2);
+        SELECT @monto_pago = monto 
+        FROM eCobros.Pago 
+        WHERE id_pago = @id_pago;
+
+        -- Ajustar estado del pago
+        IF @total_reembolsado = 0
+        BEGIN
+            UPDATE eCobros.Pago 
+            SET estado = 'completado' 
+            WHERE id_pago = @id_pago;
+        END
+        ELSE IF @total_reembolsado < @monto_pago
+        BEGIN
+            UPDATE eCobros.Pago 
+            SET estado = 'completado' 
+            WHERE id_pago = @id_pago;
+        END
+        ELSE IF @total_reembolsado = @monto_pago
+        BEGIN
+            UPDATE eCobros.Pago 
+            SET estado = 'reembolsado' 
+            WHERE id_pago = @id_pago;
+        END
+
+        COMMIT TRANSACTION;
+        PRINT 'Reembolso eliminado correctamente.';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END;
+GO
 
 
 CREATE OR ALTER PROCEDURE eAdministrativos.CrearUsuario

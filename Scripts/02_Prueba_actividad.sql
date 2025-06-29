@@ -1,3 +1,4 @@
+
 -- ===================================================================
 -- CASOS DE USO PARA STORED PROCEDURES eSocios
 -- ===================================================================
@@ -5,18 +6,14 @@
 -- ===================================================================
 -- SETUP INICIAL - Datos necesarios para las pruebas
 -- ===================================================================
-
--- Verificar que existan las categorías necesarias
-SELECT * FROM eSocios.Categoria;
-
--- Si no existen, crearlas (descomenta si es necesario):
+USE Com5600G10
+GO
+SET NOCOUNT ON
 
 INSERT INTO eSocios.Categoria (nombre,costo_mensual) VALUES ('Menor',1000);
 INSERT INTO eSocios.Categoria (nombre,costo_mensual) VALUES ('Cadete',2000);
 INSERT INTO eSocios.Categoria (nombre,costo_mensual) VALUES ('Mayor',3000);
 
-use Com5600G10
-go
 -- ===================================================================
 -- 1. CREAR ACTIVIDADES - eSocios.CrearActividad
 -- ===================================================================
@@ -201,6 +198,7 @@ SELECT @id_social = id_actividad FROM eSocios.Actividad WHERE nombre = 'Activida
 SELECT @id_socio1 = id_socio FROM eSocios.Socio WHERE dni = '12345678';
 SELECT @id_socio2 = id_socio FROM eSocios.Socio WHERE dni = '87654321';
 SELECT @id_socio3 = id_socio FROM eSocios.Socio WHERE dni = '11223344';
+
 
 -- Casos exitosos: Asignar actividades
 EXEC eSocios.AsignarActividad @id_socio = @id_socio1, @id_actividad = @id_natacion;
@@ -520,8 +518,12 @@ BEGIN TRY
         DELETE FROM eSocios.GrupoFamiliar;
         PRINT 'Eliminados todos los grupos familiares (GrupoFamiliar)';
     END
+	-- 6. Eliminar Categorias
+	DELETE FROM eSocios.Categoria;
+    PRINT 'Eliminados todas los categorias (Categoria)';
+
     
-    -- 6. Resetear los contadores de identidad
+    -- 7. Resetear los contadores de identidad
     IF OBJECT_ID('eSocios.Actividad', 'U') IS NOT NULL
         DBCC CHECKIDENT ('eSocios.Actividad', RESEED, 0);
     
@@ -530,6 +532,9 @@ BEGIN TRY
     
     IF OBJECT_ID('eSocios.GrupoFamiliar', 'U') IS NOT NULL
         DBCC CHECKIDENT ('eSocios.GrupoFamiliar', RESEED, 0);
+
+    IF OBJECT_ID('eSocios.Categoria', 'U') IS NOT NULL
+        DBCC CHECKIDENT ('eSocios.Categoria', RESEED, 0);
     
     PRINT 'Contadores de identidad reseteados';
     
@@ -566,9 +571,7 @@ SELECT 'Realiza' as Tabla, COUNT(*) as Registros FROM eSocios.Realiza
 UNION ALL
 SELECT 'Categoria' as Tabla, COUNT(*) as Registros FROM eSocios.Categoria;
 
--- Mostrar las categorías que permanecen
-SELECT 'CATEGORÍAS PRESERVADAS' as Titulo;
-SELECT * FROM eSocios.Categoria;
 
-PRINT '=== LIMPIEZA COMPLETADA - SISTEMA LISTO PARA NUEVAS PRUEBAS ==='; 
+PRINT '
+=== LIMPIEZA COMPLETADA - SISTEMA LISTO PARA NUEVAS PRUEBAS ==='; 
 

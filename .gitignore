@@ -1,1 +1,3 @@
-Scripts/.vs/Grupo10/v15/.ssms_suo
+*.ssms_suo
+*.user
+*.sqlproj.user

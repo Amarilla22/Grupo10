@@ -12,20 +12,22 @@ Integrantes:
 - Fleita Thiago , DNI: 45233264
 */
 
-use master
-go
+USE master
+GO
 
+DROP DATABASE IF EXISTS Com5600G10
 CREATE DATABASE Com5600G10
+GO
 
-use Com5600G10
-go
+USE Com5600G10
+GO
 
-create schema eSocios
-go
-create schema eCobros
-go
-create schema eAdministrativos
-go
+CREATE SCHEMA eSocios
+GO
+CREATE SCHEMA eCobros
+GO
+CREATE SCHEMA eAdministrativos
+GO
 
 CREATE TABLE eSocios.Categoria ( 
 	id_categoria int identity(1,1) PRIMARY KEY,
@@ -127,7 +129,7 @@ CREATE TABLE eCobros.ItemFactura
 (
     id_item int IDENTITY(1,1) PRIMARY KEY,
     id_factura int NOT NULL FOREIGN KEY references eCobros.Factura(id_factura),
-    concepto varchar(100) NOT NULL CHECK (concepto IN ('membresia', 'actividad', 'pileta', 'colonia', 'sum', 'recargo por segundo vencimiento','reembolso')), 
+    concepto varchar(100) NOT NULL, 
     monto decimal(10, 2),
     periodo varchar(20) NOT NULL,
 );
@@ -149,9 +151,9 @@ GO
 
 
 CREATE TABLE eCobros.Pago (
-    id_pago int PRIMARY KEY,
+    id_pago int identity(1,1) PRIMARY KEY,
     id_factura int NOT NULL FOREIGN KEY references eCobros.Factura(id_factura),
-    medio_pago varchar(50) NOT NULL CHECK (medio_pago IN ('visa', 'masterCard', 'tarjeta naranja', 'pago facil', 'rapipago', 'mercado pago')),
+    medio_pago varchar(50) NOT NULL CHECK (medio_pago IN ('visa', 'masterCard', 'tarjeta naranja', 'pago facil', 'rapipago', 'mercado pago','efectivo')),
     monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
     fecha date NOT NULL,
     estado varchar(20) NOT NULL CHECK (estado IN ('completado', 'reembolsado', 'anulado')),
@@ -161,7 +163,7 @@ GO
 
 
 CREATE TABLE eCobros.Reembolso (
-    id_reembolso int PRIMARY KEY,
+    id_reembolso int identity (1,1) PRIMARY KEY,
     id_pago int NOT NULL FOREIGN KEY references eCobros.Pago(id_pago),
     monto decimal(10, 2)  NOT NULL CHECK (monto >= 0),
     motivo varchar(100) NOT NULL,

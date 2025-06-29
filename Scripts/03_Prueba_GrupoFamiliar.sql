@@ -1,9 +1,15 @@
+
 -- ===================================================================
 -- CASOS DE PRUEBA ADICIONALES PARA STORED PROCEDURES eSocios
 -- ===================================================================
 
 USE Com5600G10
 GO
+SET NOCOUNT ON
+
+INSERT INTO eSocios.Categoria (nombre,costo_mensual) VALUES ('Menor',1000);
+INSERT INTO eSocios.Categoria (nombre,costo_mensual) VALUES ('Cadete',2000);
+INSERT INTO eSocios.Categoria (nombre,costo_mensual) VALUES ('Mayor',3000);
 
 PRINT '=== INICIANDO CASOS DE PRUEBA ADICIONALES ===';
 
@@ -505,3 +511,24 @@ BEGIN
 END
 
 PRINT '=== TODAS LAS PRUEBAS COMPLETADAS ===';
+
+PRINT '
+=== INICIANDO LIMPIEZA DE DATOS ===';
+
+
+DELETE FROM eSocios.Realiza;
+DELETE FROM eSocios.Tutor;
+DELETE FROM eSocios.GrupoFamiliar;
+DELETE FROM eSocios.Socio;
+DELETE FROM eSocios.Actividad;
+DELETE FROM eSocios.Categoria;
+
+-- Reiniciar identidades
+DBCC CHECKIDENT ('eSocios.Socio', RESEED, 0);
+DBCC CHECKIDENT ('eSocios.Tutor', RESEED, 0);
+DBCC CHECKIDENT ('eSocios.GrupoFamiliar', RESEED, 0);
+DBCC CHECKIDENT ('eSocios.Actividad', RESEED, 0);
+DBCC CHECKIDENT ('eSocios.Categoria', RESEED, 0);
+
+PRINT '
+=== LIMPIEZA COMPLETADA - SISTEMA LISTO PARA NUEVAS PRUEBAS ==='; 
