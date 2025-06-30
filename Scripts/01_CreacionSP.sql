@@ -120,16 +120,29 @@ BEGIN
 		IF @email NOT LIKE '%@%.%'
 			THROW 50002, 'Formato de email invalido.', 1;
 
+		IF @telefono IS NOT NULL
+		BEGIN
+			IF @telefono LIKE '%[^0-9]%'
+				THROW 50003, 'Formato de telefono inválido.', 1;
+		END
+
+		IF @telefono_emergencia IS NOT NULL
+		BEGIN
+			IF @telefono_emergencia LIKE '%[^0-9]%'
+				THROW 50004, 'Formato de telefono de emergencia inválido.', 1;
+		END
+
 		--Actualizacion
 		UPDATE eSocios.Socio
 		SET
-			nombre = @nombre,
-			apellido = @apellido,
-			email = @email,
-			telefono = @telefono,
-			telefono_emergencia = @telefono_emergencia,
-			obra_social = @obra_social,
-			nro_obra_social = @nro_obra_social
+			nombre = COALESCE(@nombre,nombre),
+            apellido = COALESCE(@apellido, apellido),
+            email = COALESCE(@email, email),
+			fecha_nac = COALESCE(@fecha_nac, fecha_nac),
+			telefono = COALESCE(@telefono,telefono),
+            telefono_emergencia = COALESCE(@telefono_emergencia, telefono_emergencia),
+            obra_social = COALESCE(@obra_social, obra_social),
+            nro_obra_social = COALESCE(@nro_obra_social, nro_obra_social)
 		WHERE id_socio = @id_socio;
 
 		PRINT 'Socio modificado con éxito.';
@@ -138,8 +151,10 @@ BEGIN
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
-END; --------T
+END;
 GO
+
+
 
 
 --Verifica que exista un socio con el ID dado y luego de eso le asigna la actividad indicada por ID en la tabla Realiza
@@ -159,15 +174,20 @@ CREATE OR ALTER PROCEDURE eSocios.AsignarActividad
 			-- Verificar que la actividad existe
 			IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
 				THROW 50002, 'La actividad no existe', 1;
+
+			--Verifico si ya está asignada (Para evitar duplicados)
+			IF EXISTS (SELECT 1 FROM eSocios.Realiza WHERE socio = @id_socio AND id_actividad = @id_actividad)
+				THROW 50003, 'El socio ya está asignado a esa actividad.', 1;
             
 			-- Asignar actividad
 			INSERT INTO eSocios.Realiza (socio, id_actividad)
 			VALUES (@id_socio, @id_actividad);
         
-			SELECT 'Actividad asignada correctamente' AS Resultado;
+			SELECT CONCAT('Actividad ', @id_actividad, ' asignada al socio ', @id_socio, ' con éxito.') AS Resultado;
 		END TRY
 		BEGIN CATCH
-			THROW;
+			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+			THROW 50000, @ErrorMessage, 1;
 		END CATCH
 	END;
 	GO 
@@ -677,26 +697,40 @@ BEGIN
 END
 GO
 
-	-- elimina a un socio de una actividad
+-- elimina a un socio de una actividad
 CREATE OR ALTER PROCEDURE eSocios.DesinscribirActividad
 		@id_socio INT,
 		@id_actividad INT
-	AS
-	BEGIN
-		SET NOCOUNT ON;
+AS
+BEGIN
+	SET NOCOUNT ON;
     
-		BEGIN TRY
-			DELETE FROM eSocios.Realiza
-			WHERE socio = @id_socio AND id_actividad = @id_actividad;
+	BEGIN TRY
+		--Validar que el socio exista
+		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
+			THROW 50001, 'El socio no existe.', 1;
+
+		--Validar que la actividad exista
+		IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
+			THROW 50002, 'La actividad no existe.', 1;
+
+		--Valido que el socio esté efectivamente inscripto en la actividad
+		IF NOT EXISTS (SELECT 1 FROM eSocios.Realiza WHERE socio = @id_socio AND id_actividad = @id_actividad)
+			THROW 50003, 'El ID socio ingresado no está inscripto en esta actividad', 1;
+
+		--Eliminar la inscripcion
+		DELETE FROM eSocios.Realiza
+		WHERE socio = @id_socio AND id_actividad = @id_actividad;
         
-			IF @@ROWCOUNT = 0
-				THROW 50001, 'El socio no está asignado a esta actividad', 1;
-		END TRY
-		BEGIN CATCH
-			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-			THROW 50000, @ErrorMessage, 1;
-		END CATCH
-	END;
+		--Confirmacion
+		SELECT CONCAT('Socio ', @id_socio, ' desinscripto de la actividad ', @id_actividad, ' con éxito.') AS Resultado;
+
+	END TRY
+	BEGIN CATCH
+		DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+		THROW 50000, @ErrorMessage, 1;
+	END CATCH
+END;
 GO
 
 
@@ -736,6 +770,10 @@ BEGIN
             THROW 50003, 'El adulto ya es responsable de otro grupo familiar', 1;
             
      
+		--Verificar que no pertenezca ya a otro grupo (no puede ser miembro de un grupo y responsable de otro)
+		IF EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_adulto_responsable AND id_grupo_familiar IS NOT NULL)
+			THROW 50005, 'El socio ya pertenece a un grupo familiar.', 1;
+
         -- crea el grupo familiar con descuento por defecto del 15%
         INSERT INTO eSocios.GrupoFamiliar (id_adulto_responsable, descuento)
         VALUES ( @id_adulto_responsable, 15.00);
@@ -748,6 +786,8 @@ BEGIN
         UPDATE eSocios.Socio
         SET id_grupo_familiar = @id_grupo_familiar
         WHERE id_socio = @id_adulto_responsable;
+
+		PRINT 'Grupo familiar creado con éxito.';
         
     END TRY
     BEGIN CATCH
@@ -992,20 +1032,22 @@ CREATE OR ALTER PROCEDURE eSocios.ModificarTutor
 			THROW 60002, 'Ya existe otro tutor con ese email', 1;
 	-- Actualizar datos del tutor
 			UPDATE eSocios.Tutor
-			SET nombre = @nombre,
-				apellido = @apellido,
-				email = @email,
-				fecha_nac = @fecha_nac,
-				telefono = @telefono,
-				parentesco = @parentesco
+			SET nombre = COALESCE(@nombre, nombre),
+				apellido = COALESCE(@apellido, apellido),
+				email = COALESCE (@email, email),
+				fecha_nac = COALESCE(@fecha_nac, fecha_nac),
+				telefono = COALESCE(@telefono, telefono),
+				parentesco = COALESCE(@parentesco, parentesco)
 			WHERE id_tutor = @id_tutor;
+
+			PRINT 'Tutor modificado con éxito.';
 
 		END TRY
 		BEGIN CATCH
 			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
 			THROW 50000, @ErrorMessage, 1;
 		END CATCH
-	END; ----R
+	END;
 GO
 
 

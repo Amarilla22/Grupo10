@@ -1,3 +1,16 @@
+/*
+Entrega 7 - Creacion de usuarios.
+Fecha de entrega: 27/06/2025
+Nro. Comision: 5600
+Grupo: 10
+Materia: Bases de datos aplicada
+Integrantes:
+- Moggi Rocio , DNI: 45576066
+- Amarilla Santiago, DNI: 45481129 
+- Martinez Galo, DNI: 43094675
+- Fleita Thiago , DNI: 45233264
+*/
+
 -- ================================
 -- TEST 1: Crear usuario válido
 -- Resultado esperado: Usuario creado con éxito.

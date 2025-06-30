@@ -1,3 +1,16 @@
+/*
+Entrega 7 - Roles y permisos.
+Fecha de entrega: 27/06/2025
+Nro. Comision: 5600
+Grupo: 10
+Materia: Bases de datos aplicada
+Integrantes:
+- Moggi Rocio , DNI: 45576066
+- Amarilla Santiago, DNI: 45481129 
+- Martinez Galo, DNI: 43094675
+- Fleita Thiago , DNI: 45233264
+*/
+
 --Creacion de roles
 use Com5600G10
 go
