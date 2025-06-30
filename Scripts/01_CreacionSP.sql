@@ -1902,13 +1902,14 @@ GO
 CREATE OR ALTER PROCEDURE eAdministrativos.CrearUsuario
 	@rol VARCHAR(50),
 	@nombre_usuario NVARCHAR(50),
-	@clave NVARCHAR(50),
+	@clave NVARCHAR(50), --La clave se recibe en texto plano para el hash
 	@vigencia_dias INT = 90
 AS
 BEGIN
 	SET NOCOUNT ON;
 
 	BEGIN TRY
+		--Validar si el nombre de usuario ya existe
 		IF EXISTS (
 			SELECT 1
 			FROM eAdministrativos.UsuarioAdministrativo
@@ -1916,31 +1917,43 @@ BEGIN
 		)
 			THROW 50001, 'El nombre de usuario ya existe.',1;
 
-		-- Validación de formato de clave (además del CHECK_POLICY del login)
+		-- Validación de formato de clave
 		IF LEN(@clave) < 8  OR @clave NOT LIKE '%[A-Z]%' OR @clave NOT LIKE '%[a-z]%' OR @clave NOT LIKE '%[0-9]%' OR @clave NOT LIKE '%[^a-zA-Z0-9]%'
 			THROW 50003, 'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas, números y símbolos.', 1;
 
+		--Validar que el rol exista en la base de datos
 		IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @rol AND type = 'R')
 			THROW 50004, 'El rol especificado no existe.', 1;
 
-		
-		-- Inserción en tabla lógica
+		BEGIN TRANSACTION
+
+		-- Inserción en tabla lógica con HASH de la clave
 		INSERT INTO eAdministrativos.UsuarioAdministrativo (
 			rol, nombre_usuario, clave, fecha_vigencia_clave, ultimo_cambio_clave
 		)
 		VALUES (
-			@rol, @nombre_usuario, @clave, DATEADD(DAY, @vigencia_dias, GETDATE()), GETDATE()
+			@rol, 
+			@nombre_usuario, 
+			HASHBYTES('SHA2_256',@clave), 
+			DATEADD(DAY, @vigencia_dias, GETDATE()), GETDATE()
 		);
 
-		-- Crear LOGIN
-		DECLARE @sql_login NVARCHAR(MAX) = '
+		-- Crear LOGIN a nivel servidor
+		--Se utiliza la clave en texto plano para crear el LOGIN, ya que SQL Server
+		--gestionará el hash interno para el LOGIN del servidor.
+		--Se establece la base de datos 'Com5600G10' como default para este login
+		DECLARE @sql_login NVARCHAR(MAX);
+		DECLARE @db_name SYSNAME = DB_NAME();
+		SET @sql_login = '
 			IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = ''' + @nombre_usuario + ''')
 			BEGIN
-				CREATE LOGIN [' + @nombre_usuario + '] 
-				WITH PASSWORD = ''' + @clave + ''', 
-				CHECK_POLICY = ON;
+				CREATE LOGIN [' + @nombre_usuario + ']
+				WITH PASSWORD = ''' + @clave + ''',
+				DEFAULT_DATABASE = [' + @db_name + '], -- Establece la base de datos actual como default
+				CHECK_POLICY = ON, -- Se recomienda mantener la política de check del login activa
+				CHECK_EXPIRATION = ON; -- Se recomienda activar la expiración para logins de usuario
 			END';
-		EXEC (@sql_login);
+			EXEC sp_executesql @sql_login; --sp_executesql para seguridad y manejo de parametros
 
 		-- Crear USER
         DECLARE @sql_user NVARCHAR(MAX) = '
@@ -1948,30 +1961,32 @@ BEGIN
         BEGIN
             CREATE USER [' + @nombre_usuario + '] FOR LOGIN [' + @nombre_usuario + '];
         END';
-        EXEC (@sql_user);
+        EXEC sp_executesql @sql_user;
 
-		-- Asignar al rol
+		-- Asignar el USER al Rol de base de datos especificado
         DECLARE @sql_role NVARCHAR(MAX) = '
         ALTER ROLE [' + @rol + '] ADD MEMBER [' + @nombre_usuario + ']';
-        EXEC (@sql_role);
+        EXEC sp_executesql @sql_role;
 
+		COMMIT TRANSACTION; --Confirma todos los cambios si todo fue exitoso
 		PRINT 'Usuario creado con éxito.';
 	END TRY
 	BEGIN CATCH
+		IF @@TRANCOUNT > 0
+			ROLLBACK TRANSACTION; --En caso de algun fallo rollback
+
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
 END;
 GO
 
-
-
 CREATE OR ALTER PROCEDURE eAdministrativos.ModificarUsuario
 	@id_usuario INT,
-	@rol VARCHAR(50),
-	@nombre_usuario NVARCHAR(50),
-	@clave NVARCHAR (50),
-	@vigencia_dias INT
+	@nuevo_rol VARCHAR(50) = NULL, --opcional
+	@nuevo_nombre_usuario NVARCHAR(50) = NULL, --opcional
+	@nueva_clave NVARCHAR (50) = NULL, --opcional
+	@vigencia_dias INT = NULL
 AS
 BEGIN
 	SET NOCOUNT ON;
@@ -1980,62 +1995,111 @@ BEGIN
 		--Validacion existencia
 		IF NOT EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario)
 			THROW 50001, 'No existe usuario con ese ID.', 1;
+		
+		--Obtener datos actuales del usuario
+		DECLARE @rol_actual VARCHAR(50);
+		DECLARE @nombre_usuario_actual NVARCHAR(50);
+		DECLARE @clave_hash_actual VARBINARY(32); -- Para comparar hashes
+		DECLARE @fecha_vigencia_clave_actual DATE;
+		
+		SELECT
+			@rol_actual = rol,
+			@nombre_usuario_actual = nombre_usuario,
+			@clave_hash_actual = clave,
+			@fecha_vigencia_clave_actual = fecha_vigencia_clave
+		FROM eAdministrativos.UsuarioAdministrativo
+		WHERE id_usuario = @id_usuario;
 
-		--Validar que el nuevo nombre no esté en uso
-		IF EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE nombre_usuario = @nombre_usuario AND id_usuario <> @id_usuario)
-			THROW 50002, 'El nombre de usuario ya está en uso.', 1;
+		--Validar si al menos un parámetro de modificacion fue proporcionado
+		IF @nuevo_rol IS NULL AND @nuevo_nombre_usuario IS NULL AND @nueva_clave IS NULL AND @vigencia_dias IS NULL
+			THROW 50002, 'Debe especificar al menos un campo para modificar.', 1;
 
-		-- Validación de formato de clave 
-		IF LEN(@clave) < 8 
-			OR @clave NOT LIKE '%[A-Z]%' 
-			OR @clave NOT LIKE '%[a-z]%' 
-			OR @clave NOT LIKE '%[0-9]%' 
-			OR @clave NOT LIKE '%[^a-zA-Z0-9]%' 
-				THROW 50003, 'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas, números y símbolos.', 1;
+		--Validar que el nuevo nombre no esté en uso por otro usuario
+		IF @nuevo_nombre_usuario IS NOT NULL AND @nuevo_nombre_usuario <> @nombre_usuario_actual
+		BEGIN
+			IF EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE nombre_usuario = @nuevo_nombre_usuario AND id_usuario <> @id_usuario)
+				THROW 50003, 'El nombre de usuario ya está en uso.', 1;
+		END
+		
 
-
-		IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @rol AND type = 'R')
-			THROW 50004, 'El rol especificado no existe.', 1;
-
-		--Obtener el nombre anterior
-		DECLARE @nombre_anterior NVARCHAR(50);
-		SELECT @nombre_anterior = nombre_usuario FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario;
+		-- Validación de formato de nueva clave
+		IF @nueva_clave IS NOT NULL
+		BEGIN
+			IF LEN(@nueva_clave) < 8 
+			OR @nueva_clave NOT LIKE '%[A-Z]%' 
+			OR @nueva_clave NOT LIKE '%[a-z]%' 
+			OR @nueva_clave NOT LIKE '%[0-9]%' 
+			OR @nueva_clave NOT LIKE '%[^a-zA-Z0-9]%' 
+				THROW 50004, 'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas, números y símbolos.', 1;
+		END
+		
+		--Validar que el nuevo Rol exista como ROLE en la DB
+		IF @nuevo_rol IS NOT NULL
+		BEGIN
+			IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @nuevo_rol AND type = 'R')
+				THROW 50005, 'El rol especificado no existe.', 1;
+		END
+		
+		BEGIN TRANSACTION
 	
 		--Actualizacion
 		UPDATE eAdministrativos.UsuarioAdministrativo
 			SET 
-				rol = @rol,
-				nombre_usuario = @nombre_usuario,
-				clave = @clave,
-				fecha_vigencia_clave = DATEADD(DAY,@vigencia_dias,GETDATE()),
+				rol = COALESCE(@nuevo_rol, @rol_actual),
+				nombre_usuario = COALESCE(@nuevo_nombre_usuario, @nombre_usuario_actual),
+				clave = COALESCE(HASHBYTES('SHA2_256', @nueva_clave), @clave_hash_actual),
+				fecha_vigencia_clave = COALESCE(DATEADD(DAY, @vigencia_dias, GETDATE()), @fecha_vigencia_clave_actual),
 				ultimo_cambio_clave = GETDATE()
 			WHERE id_usuario = @id_usuario;
 
 
-		--Si el nombre cambió, renombra login y usuario
-		IF @nombre_anterior <> @nombre_usuario
+		--Cambios en LOGIN y USER
+		DECLARE @sql_dynamic NVARCHAR(MAX);
+		DECLARE @current_db_name SYSNAME = DB_NAME(); -- Obtiene el nombre de la base de datos actual
+
+		-- Si el nombre de usuario cambió, renombrar LOGIN y USER
+		IF @nuevo_nombre_usuario IS NOT NULL AND @nuevo_nombre_usuario <> @nombre_usuario_actual
+		BEGIN
+			-- Renombrar LOGIN
+			SET @sql_dynamic = 'ALTER LOGIN [' + @nombre_usuario_actual + '] WITH NAME = [' + @nuevo_nombre_usuario + '];';
+			EXEC sp_executesql @sql_dynamic;
+
+			-- Renombrar USER
+			SET @sql_dynamic = 'ALTER USER [' + @nombre_usuario_actual + '] WITH NAME = [' + @nuevo_nombre_usuario + '];';
+			EXEC sp_executesql @sql_dynamic;
+		END;
+
+		-- Si la clave cambió, actualizar contraseña del LOGIN
+		IF @nueva_clave IS NOT NULL
+		BEGIN
+			-- Usar el nombre de usuario que será el actual después de un posible renombramiento
+			DECLARE @login_name_for_password NVARCHAR(50) = ISNULL(@nuevo_nombre_usuario, @nombre_usuario_actual);
+			SET @sql_dynamic = 'ALTER LOGIN [' + @login_name_for_password + '] WITH PASSWORD = ''' + @nueva_clave + ''' CHECK_POLICY = ON, CHECK_EXPIRATION = ON, DEFAULT_DATABASE = [' + @current_db_name + '];';
+			EXEC sp_executesql @sql_dynamic;
+		END;
+
+		-- Si el rol cambió, reasignar el USER al nuevo rol (y remover del antiguo si es diferente)
+		IF @nuevo_rol IS NOT NULL AND @nuevo_rol <> @rol_actual
+		BEGIN
+			-- Remover del rol antiguo (si no es 'public', que es el rol por defecto y no se puede remover)
+			IF @rol_actual IS NOT NULL AND @rol_actual <> 'public' AND EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @rol_actual AND type = 'R')
 			BEGIN
-				DECLARE @sql_rename_login NVARCHAR(MAX) = 'ALTER LOGIN [' + @nombre_anterior + '] WITH NAME = [' + @nombre_usuario + ']';
-				EXEC (@sql_rename_login);
+				SET @sql_dynamic = 'ALTER ROLE [' + @rol_actual + '] DROP MEMBER [' + ISNULL(@nuevo_nombre_usuario, @nombre_usuario_actual) + '];';
+				EXEC sp_executesql @sql_dynamic;
+			END;
 
-				--Cambbiar nombre del USER
-				DECLARE @sql_rename_user NVARCHAR(MAX) = 'ALTER USER [' + @nombre_anterior + '] WITH NAME = [' + @nombre_usuario + ']';
-				EXEC (@sql_rename_user);
-		END
+			-- Añadir al nuevo rol
+			SET @sql_dynamic = 'ALTER ROLE [' + @nuevo_rol + '] ADD MEMBER [' + ISNULL(@nuevo_nombre_usuario, @nombre_usuario_actual) + '];';
+			EXEC sp_executesql @sql_dynamic;
+		END;
 
-		-- Actualizar contraseña del login
-		DECLARE @sql_password NVARCHAR(MAX) = '
-			ALTER LOGIN [' + @nombre_usuario + '] WITH PASSWORD = ''' + @clave + '''';
-		EXEC (@sql_password);
-
-		-- Reasignar al rol
-		DECLARE @sql_role NVARCHAR(MAX) = '
-			ALTER ROLE [' + @rol + '] ADD MEMBER [' + @nombre_usuario + ']';
-		EXEC (@sql_role);
-
+		COMMIT TRANSACTION;
 		PRINT 'Usuario modificado con éxito.';
 	END TRY
 	BEGIN CATCH
+		IF @@TRANCOUNT > 0
+			ROLLBACK TRANSACTION;
+
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
@@ -2054,32 +2118,53 @@ BEGIN
 		IF NOT EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario)
 			THROW 50001, 'El usuario no existe.', 1;
 
-	--Obtener nombre de usuario
-	DECLARE @nombre_usuario NVARCHAR(50);
-	SELECT @nombre_usuario = nombre_usuario FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario;
+		--Obtener nombre de usuario y el rol
+		DECLARE @nombre_usuario NVARCHAR(50);
+		DECLARE @rol_asociado VARCHAR(50);
+		SELECT @nombre_usuario = nombre_usuario, @rol_asociado = rol
+		FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario;
 	
-	--Eliminar usuario 
-	DELETE FROM eAdministrativos.UsuarioAdministrativo
-	WHERE id_usuario = @id_usuario
+		BEGIN TRANSACTION
 
-	-- Eliminar USER de base de datos
-		DECLARE @sql_drop_user NVARCHAR(MAX) = '
+		--Eliminar usuario 
+		DELETE FROM eAdministrativos.UsuarioAdministrativo
+		WHERE id_usuario = @id_usuario
+
+		-- Remover el USER de la base de datos de su rol (si no es 'public')
+		-- Es importante quitarlo del rol antes de eliminar el USER si no es el rol 'public'
+			IF @rol_asociado IS NOT NULL AND @rol_asociado <> 'public' AND EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @rol_asociado AND type = 'R')
+			BEGIN
+				DECLARE @sql_drop_role_member NVARCHAR(MAX) = 'ALTER ROLE [' + @rol_asociado + '] DROP MEMBER [' + @nombre_usuario + '];';
+				EXEC sp_executesql @sql_drop_role_member;
+			END;
+
+		--Eliminar el USER de la base de datos (si existe)
+		DECLARE @sql_drop_user NVARCHAR(MAX);
+		SET @sql_drop_user = '
 			IF EXISTS (SELECT 1 FROM sys.database_principals WHERE name = ''' + @nombre_usuario + ''')
-			DROP USER [' + @nombre_usuario + ']';
-		EXEC (@sql_drop_user);
+			BEGIN
+				DROP USER [' + @nombre_usuario + '];
+			END;';
+		EXEC sp_executesql @sql_drop_user;
 
-		-- Eliminar LOGIN del servidor
-		DECLARE @sql_drop_login NVARCHAR(MAX) = '
+		-- Eliminar el LOGIN del servidor (si existe)
+		DECLARE @sql_drop_login NVARCHAR(MAX);
+		SET @sql_drop_login = '
 			IF EXISTS (SELECT 1 FROM sys.server_principals WHERE name = ''' + @nombre_usuario + ''')
-			DROP LOGIN [' + @nombre_usuario + ']';
-		EXEC (@sql_drop_login);
+			BEGIN
+				DROP LOGIN [' + @nombre_usuario + '];
+			END;';
+		EXEC sp_executesql @sql_drop_login;
 
+		COMMIT TRANSACTION;
 		PRINT 'Usuario eliminado con éxito.';
 	END TRY
 	BEGIN CATCH
+		IF @@TRANCOUNT > 0
+			ROLLBACK TRANSACTION;
+
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
 END; 
 GO
-
