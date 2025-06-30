@@ -2,6 +2,10 @@
 -- TEST 1: Crear usuario válido
 -- Resultado esperado: Usuario creado con éxito.
 -- ================================
+
+use Com5600G10
+go
+
 EXEC eAdministrativos.CrearUsuario
     @rol = 'AdministrativoSocio',
     @nombre_usuario = 'juan_socio10',

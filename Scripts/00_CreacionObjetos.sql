@@ -5,7 +5,7 @@ GO
 DROP DATABASE IF EXISTS Com5600G10
 CREATE DATABASE Com5600G10
 
-USE testTP
+USE prueba
 GO
 
 --CREACION SCHEMAS--
@@ -29,67 +29,66 @@ BEGIN
 	CREATE TABLE eSocios.Categoria ( 
 	id_categoria INT IDENTITY(1,1) PRIMARY KEY,
     nombre VARCHAR(50) NOT NULL,
-    costo_mensual DECIMAL(10,2) NOT NULL --agregar check >= 0
+    costo_mensual DECIMAL(10,2) NOT NULL CHECK (costo_mensual >= 0),
+	Vigencia date NOT NULL
 	);
 END
 GO
 
+
 --CREACION DE TABLA SOCIO
 IF OBJECT_ID(N'eSocios.Socio', N'U') IS NULL
 BEGIN
-	CREATE TABLE eSocios.Socio (
-    id_socio int identity(1,1) PRIMARY KEY,
-    id_grupo_familiar int, 
+CREATE TABLE eSocios.Socio (
+    id_socio varchar(20) PRIMARY KEY,
     id_categoria int NOT NULL,
-    dni varchar(8) NOT NULL UNIQUE CHECK (TRY_CAST(dni as INT) > 0), 
+    dni int UNIQUE NOT NULL,
     nombre varchar(50) NOT NULL,
     apellido varchar(50) NOT NULL,
-    email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
+    email nvarchar(100) CHECK (email LIKE '%@%.%' AND email NOT LIKE '%@%@%' AND email NOT LIKE '@%' AND email NOT LIKE '%@'),
     fecha_nac date NOT NULL,
-    telefono varchar(10) CHECK (
-    LEN(telefono) = 10 AND telefono NOT LIKE '%[^0-9]%'),
-    telefono_emergencia varchar(10) CHECK (
-    LEN(telefono_emergencia) = 10 AND telefono_emergencia NOT LIKE '%[^0-9]%'),
+    telefono varchar(20),
+    telefono_emergencia varchar(20),
     obra_social varchar(50),
     nro_obra_social varchar(15),
+	tel_obra_social varchar(30),
 	activo BIT DEFAULT 1 CHECK (activo IN (0,1)),
 	constraint FKSoc FOREIGN KEY (id_categoria) references eSocios.Categoria (id_categoria)
 );
 END
 GO
 
---CREACION DE TABLA GRUPO FAMILIAR
-IF OBJECT_ID(N'eSocios.GrupoFamiliar', N'U') IS NULL
+
+IF OBJECT_ID(N'eSocios.Tutor', N'U') IS NULL
 BEGIN
-	CREATE TABLE eSocios.GrupoFamiliar (
-    id_grupo int identity(1,1),
-    id_adulto_responsable int,  
-    descuento decimal(10,2),
-	constraint PKGruFam PRIMARY KEY (id_grupo,id_adulto_responsable),
-	constraint FKGruFam FOREIGN KEY (id_adulto_responsable) references eSocios.Socio (id_socio)
+CREATE TABLE eSocios.Tutor (
+    id_tutor varchar(20) PRIMARY KEY,
+    nombre varchar(50) NOT NULL,
+    apellido varchar (50) NOT NULL,
+	DNI int UNIQUE NOT NULL,
+    email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
+    fecha_nac date NOT NULL,
+    telefono varchar(20) NOT NULL
 );
 END
 GO
 
---CREACION DE TABLA TUTOR
-IF OBJECT_ID(N'eSocios.Tutor', N'U') IS NULL
+
+--CREACION DE TABLA GRUPO FAMILIAR
+IF OBJECT_ID(N'eSocios.GrupoFamiliar', N'U') IS NULL
 BEGIN
-	CREATE TABLE eSocios.Tutor (
-    id_tutor int identity(1,1) PRIMARY KEY,
-	id_socio int,
-	id_tutor_socio INT,
-    nombre varchar(50) NOT NULL,
-    apellido varchar (50) NOT NULL,
-    email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
-    fecha_nac date NOT NULL, 
-    telefono varchar(10) NOT NULL CHECK (
-    LEN(telefono) = 10 AND telefono NOT LIKE '%[^0-9]%'),
-    parentesco varchar(20) NOT NULL,
-    constraint FKTut FOREIGN KEY (id_socio) references eSocios.Socio(id_socio),
-	constraint FKTut2 FOREIGN KEY (id_tutor_socio) references eSocios.Socio(id_socio)
+CREATE TABLE eSocios.GrupoFamiliar (
+	id_socio varchar(20),
+    id_tutor varchar(20),  
+    descuento decimal(10,2),
+	parentesco varchar(20) NOT NULL,
+	constraint PKGruFam PRIMARY KEY (id_socio,id_tutor),
+	constraint FKGruSoc FOREIGN KEY (id_socio) references eSocios.Socio (id_socio),
+	constraint FKGruFam FOREIGN KEY (id_tutor) references eSocios.Tutor (id_tutor)
 );
 END
 GO
+
 
 --CREACION DE TABLA ACTIVIDAD
 IF OBJECT_ID(N'eSocios.Actividad', N'U') IS NULL
@@ -97,16 +96,34 @@ BEGIN
 	CREATE TABLE eSocios.Actividad (
 	id_actividad int identity (1,1) PRIMARY KEY NOT NULL,
 	nombre nvarchar(50) NOT NULL,
-	costo_mensual decimal(10,2) NOT NULL
+	costo_mensual decimal(10,2) NOT NULL,
+	vigencia date NOT NULL
 );
 END
 GO
+
+
+IF OBJECT_ID(N'eSocios.Presentismo', N'U') IS NULL
+BEGIN
+CREATE TABLE eSocios.Presentismo (
+	id_presentismo int IDENTITY (1,1) PRIMARY KEY,
+	id_socio varchar(20),
+	id_actividad int,
+	fecha_asistencia date,
+	asistencia varchar(5),
+	profesor varchar(20)
+	CONSTRAINT FKActPre FOREIGN KEY (id_actividad) references eSocios.Actividad (id_actividad),
+	CONSTRAINT FKSocPre FOREIGN KEY (id_socio) references eSocios.Socio (id_socio)
+);
+END
+GO
+
 
 --CREACION DE TABLA REALIZA
 IF OBJECT_ID(N'eSocios.Realiza', N'U') IS NULL
 BEGIN
 	CREATE TABLE eSocios.Realiza (
-	socio int NOT NULL,
+	socio varchar(20) NOT NULL,
 	id_actividad int NOT NULL,
 	constraint PKRea PRIMARY KEY (socio, id_actividad),
 	constraint FKRea FOREIGN KEY (socio) references eSocios.Socio (id_socio),
@@ -114,6 +131,7 @@ BEGIN
 );
 END
 GO
+
 
 --CREACION DE TABLA ACTIVIDAD DIA HORARIO
 IF OBJECT_ID(N'eSocios.ActividadDiaHorario', N'U') IS NULL
@@ -130,12 +148,28 @@ BEGIN
 END
 GO
 
+
+--CREACION DE TABLA ITEM FACTURA
+IF OBJECT_ID(N'eCobros.ItemFactura', N'U') IS NULL
+BEGIN
+CREATE TABLE eCobros.ItemFactura 
+(
+    id_item int IDENTITY(1,1) PRIMARY KEY,
+    concepto varchar(100) NOT NULL,
+    monto decimal(10, 2) NOT NULL,
+    periodo varchar(20) NOT NULL,
+);
+END
+GO
+
+
 --CREACION TABLA FACTURA
 IF OBJECT_ID(N'eCobros.Factura', N'U') IS NULL
 BEGIN
-	CREATE TABLE eCobros.Factura (
+CREATE TABLE eCobros.Factura (
     id_factura int identity (1,1) PRIMARY KEY,
-    id_socio int NOT NULL FOREIGN KEY references eSocios.Socio(id_socio),
+	id_item int FOREIGN KEY references eCobros.ItemFactura(id_item),
+    id_socio varchar(20) NOT NULL FOREIGN KEY references eSocios.Socio(id_socio),
     fecha_emision date,
     fecha_venc_1 date,
     fecha_venc_2 date,
@@ -147,43 +181,38 @@ BEGIN
 END
 GO
 
---CREACION DE TABLA ITEM FACTURA
-IF OBJECT_ID(N'eCobros.ItemFactura', N'U') IS NULL
+
+--CREACION DE TABLA ENTRADA PILETA
+IF OBJECT_ID(N'eCobros.PreciosAcceso', N'U') IS NULL
 BEGIN
-	CREATE TABLE eCobros.ItemFactura (
-    id_item int IDENTITY(1,1) PRIMARY KEY,
-    id_factura int NOT NULL FOREIGN KEY references eCobros.Factura(id_factura),
-    concepto varchar(100) NOT NULL CHECK (concepto IN ('membresia', 'actividad', 'pileta', 'colonia', 'sum', 'recargo por segundo vencimiento','reembolso')), 
-    monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
-    periodo varchar(20) NOT NULL,
+CREATE TABLE eCobros.PreciosAcceso (
+    id_precio int IDENTITY(1,1) PRIMARY KEY,
+    categoria varchar(30) NOT NULL,           
+    tipo_usuario varchar(20) NOT NULL,       
+    modalidad varchar(30) NOT NULL,         
+    precio decimal(10,2) NOT NULL,
+    vigencia_hasta date NOT NULL,
+    fecha_creacion datetime DEFAULT GETDATE(),
+    activo bit DEFAULT 1,
+    
+    CONSTRAINT CK_PreciosAcceso_Categoria 
+        CHECK (categoria IN ('Adultos', 'Menores de 12 años')),
+    CONSTRAINT CK_PreciosAcceso_TipoUsuario 
+        CHECK (tipo_usuario IN ('Socios', 'Invitados')),
+    CONSTRAINT CK_PreciosAcceso_Modalidad 
+        CHECK (modalidad IN ('Valor del dia', 'Valor de temporada', 'Valor del Mes')),
 );
 END
 GO
 
---CREACION DE TABLA ENTRADA PILETA
-IF OBJECT_ID(N'eCobros.EntradaPileta', N'U') IS NULL
-BEGIN
-	CREATE TABLE eCobros.EntradaPileta (
-	id_entrada int identity(1,1) PRIMARY KEY,
-	id_socio int NOT NULL,
-	id_item_factura int NOT NULL,
-	fecha date NOT NULL,
-	monto decimal(10,2) NOT NULL CHECK (monto >= 0),
-	tipo varchar(8) NOT NULL CHECK (tipo IN ('socio', 'invitado')),
-	lluvia bit,
-	constraint FKInv FOREIGN KEY (id_socio) references eSocios.Socio(id_socio),
-	constraint FKFact FOREIGN KEY (id_item_factura) references eCobros.ItemFactura(id_item)
-);
-END
-GO
 
 --CREACION DE TABLA PAGO
 IF OBJECT_ID(N'eCobros.Pago', N'U') IS NULL
 BEGIN
 	CREATE TABLE eCobros.Pago (
-    id_pago int PRIMARY KEY,
-    id_factura int NOT NULL FOREIGN KEY references eCobros.Factura(id_factura),
-    medio_pago varchar(50) NOT NULL CHECK (medio_pago IN ('visa', 'masterCard', 'tarjeta naranja', 'pago facil', 'rapipago', 'mercado pago')),
+    id_pago bigint PRIMARY KEY,
+    id_factura int /*NOT NULL*/ FOREIGN KEY references eCobros.Factura(id_factura),
+    medio_pago varchar(50) NOT NULL CHECK (medio_pago IN ('visa', 'masterCard', 'tarjeta naranja', 'pago facil', 'rapipago', 'mercado pago','efectivo')),
     monto decimal(10, 2) NOT NULL CHECK (monto >= 0),
     fecha date NOT NULL,
     estado varchar(20) NOT NULL CHECK (estado IN ('completado', 'reembolsado', 'anulado')),
@@ -191,6 +220,7 @@ BEGIN
 );
 END
 GO
+
 
 --CREACION DE TABLA REEMBOLSO
 IF OBJECT_ID(N'eCobros.Reembolso', N'U') IS NULL
@@ -204,6 +234,42 @@ BEGIN
 );
 END
 GO
+
+
+IF OBJECT_ID(N'eSocios.ubicaciones', N'U') IS NULL
+BEGIN
+CREATE TABLE eSocios.ubicaciones (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    latitud DECIMAL(10,8) NOT NULL,
+    longitud DECIMAL(11,8) NOT NULL,
+    elevacion DECIMAL(8,2),
+    utc_offset_seconds INT,
+    timezone VARCHAR(50),
+    timezone_abbreviation VARCHAR(10),
+    nombre_ubicacion VARCHAR(100),
+    created_at DATETIME2 DEFAULT GETDATE(),
+);
+END
+GO
+
+
+IF OBJECT_ID(N'eSocios.datos_meteorologicos', N'U') IS NULL
+BEGIN
+CREATE TABLE eSocios.datos_meteorologicos (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    ubicacion_id INT NOT NULL,
+    fecha_hora DATETIME2 NOT NULL,
+    temperatura_2m DECIMAL(5,2),
+    lluvia_mm DECIMAL(6,2),
+    humedad_relativa_pct INT,
+    velocidad_viento_100m_kmh DECIMAL(6,2),
+    created_at DATETIME2 DEFAULT GETDATE(),
+    
+    CONSTRAINT FKUbi FOREIGN KEY (ubicacion_id) REFERENCES eSocios.ubicaciones(id)
+);
+END
+GO
+
 
 --CREACION DE TABLA USUARIO ADMINISTRATIVO
 IF OBJECT_ID(N'eAdministrativos.UsuarioAdministrativo', N'U') IS NULL

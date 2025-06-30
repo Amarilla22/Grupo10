@@ -1,4 +1,7 @@
 --Creacion de roles
+use Com5600G10
+go
+
 CREATE ROLE JefeTesoreria;
 CREATE ROLE AdministrativoCobranza;
 CREATE ROLE AdministrativoMorosidad;
@@ -9,5 +12,3 @@ CREATE ROLE Presidente;
 CREATE ROLE Vicepresidente;
 CREATE ROLE Secretario;
 CREATE ROLE Vocales;
-
-
