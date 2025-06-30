@@ -23,6 +23,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'eAdministrativos')
 GO
 
 
+
 --CREACION DE TABLA CATEGORIA
 IF OBJECT_ID(N'eSocios.Categoria', N'U') IS NULL
 BEGIN
@@ -30,7 +31,7 @@ BEGIN
 	id_categoria INT IDENTITY(1,1) PRIMARY KEY,
     nombre VARCHAR(50) NOT NULL,
     costo_mensual DECIMAL(10,2) NOT NULL CHECK (costo_mensual >= 0),
-	Vigencia date NOT NULL
+	Vigencia date NOT NULL --Nuevo
 	);
 END
 GO
@@ -40,7 +41,7 @@ GO
 IF OBJECT_ID(N'eSocios.Socio', N'U') IS NULL
 BEGIN
 CREATE TABLE eSocios.Socio (
-    id_socio varchar(20) PRIMARY KEY,
+    id_socio varchar(20) PRIMARY KEY, --Nuevo
     id_categoria int NOT NULL,
     dni int UNIQUE NOT NULL,
     nombre varchar(50) NOT NULL,
@@ -61,9 +62,9 @@ GO
 
 IF OBJECT_ID(N'eSocios.Tutor', N'U') IS NULL
 BEGIN
-CREATE TABLE eSocios.Tutor (
+CREATE TABLE eSocios.Tutor ( --Nuevo
     id_tutor varchar(20) PRIMARY KEY,
-    nombre varchar(50) NOT NULL,
+    nombre varchar(50) NOT NULL, 
     apellido varchar (50) NOT NULL,
 	DNI int UNIQUE NOT NULL,
     email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
@@ -78,10 +79,10 @@ GO
 IF OBJECT_ID(N'eSocios.GrupoFamiliar', N'U') IS NULL
 BEGIN
 CREATE TABLE eSocios.GrupoFamiliar (
-	id_socio varchar(20),
-    id_tutor varchar(20),  
+	id_socio varchar(20),	--Nuevo
+    id_tutor varchar(20),  --Nuevo
     descuento decimal(10,2),
-	parentesco varchar(20) NOT NULL,
+	parentesco varchar(20) NOT NULL, --Nuevo
 	constraint PKGruFam PRIMARY KEY (id_socio,id_tutor),
 	constraint FKGruSoc FOREIGN KEY (id_socio) references eSocios.Socio (id_socio),
 	constraint FKGruFam FOREIGN KEY (id_tutor) references eSocios.Tutor (id_tutor)
@@ -97,7 +98,7 @@ BEGIN
 	id_actividad int identity (1,1) PRIMARY KEY NOT NULL,
 	nombre nvarchar(50) NOT NULL,
 	costo_mensual decimal(10,2) NOT NULL,
-	vigencia date NOT NULL
+	vigencia date NOT NULL --Nuevo
 );
 END
 GO
@@ -105,7 +106,7 @@ GO
 
 IF OBJECT_ID(N'eSocios.Presentismo', N'U') IS NULL
 BEGIN
-CREATE TABLE eSocios.Presentismo (
+CREATE TABLE eSocios.Presentismo ( --Nuevo
 	id_presentismo int IDENTITY (1,1) PRIMARY KEY,
 	id_socio varchar(20),
 	id_actividad int,
@@ -136,7 +137,7 @@ GO
 --CREACION DE TABLA ACTIVIDAD DIA HORARIO
 IF OBJECT_ID(N'eSocios.ActividadDiaHorario', N'U') IS NULL
 BEGIN
-	CREATE TABLE eSocios.ActividadDiaHorario (
+	CREATE TABLE eSocios.ActividadDiaHorario ( 
     id_actividad int NOT NULL,
     dia varchar(20) NOT NULL CHECK (dia IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')),
     hora_inicio time NOT NULL CHECK (hora_inicio BETWEEN '00:00:00' AND '23:59:59.9999999'),
@@ -149,26 +150,10 @@ END
 GO
 
 
---CREACION DE TABLA ITEM FACTURA
-IF OBJECT_ID(N'eCobros.ItemFactura', N'U') IS NULL
-BEGIN
-CREATE TABLE eCobros.ItemFactura 
-(
-    id_item int IDENTITY(1,1) PRIMARY KEY,
-    concepto varchar(100) NOT NULL,
-    monto decimal(10, 2) NOT NULL,
-    periodo varchar(20) NOT NULL,
-);
-END
-GO
-
-
---CREACION TABLA FACTURA
 IF OBJECT_ID(N'eCobros.Factura', N'U') IS NULL
 BEGIN
 CREATE TABLE eCobros.Factura (
     id_factura int identity (1,1) PRIMARY KEY,
-	id_item int FOREIGN KEY references eCobros.ItemFactura(id_item),
     id_socio varchar(20) NOT NULL FOREIGN KEY references eSocios.Socio(id_socio),
     fecha_emision date,
     fecha_venc_1 date,
@@ -182,25 +167,33 @@ END
 GO
 
 
+--CREACION DE TABLA ITEM FACTURA
+IF OBJECT_ID(N'eCobros.ItemFactura', N'U') IS NULL
+BEGIN
+CREATE TABLE eCobros.ItemFactura --Nuevo
+(
+    id_item int IDENTITY(1,1) PRIMARY KEY,
+	id_factura int FOREIGN KEY references eCobros.Factura (id_factura),
+    concepto varchar(100) NOT NULL,
+    monto decimal(10, 2) NOT NULL,
+    periodo varchar(20) NOT NULL,
+);
+END
+GO
+
+
 --CREACION DE TABLA ENTRADA PILETA
 IF OBJECT_ID(N'eCobros.PreciosAcceso', N'U') IS NULL
 BEGIN
-CREATE TABLE eCobros.PreciosAcceso (
+CREATE TABLE eCobros.PreciosAcceso ( --Nuevo
     id_precio int IDENTITY(1,1) PRIMARY KEY,
-    categoria varchar(30) NOT NULL,           
-    tipo_usuario varchar(20) NOT NULL,       
-    modalidad varchar(30) NOT NULL,         
+    categoria varchar(30) NOT NULL CHECK (categoria IN ('Adultos', 'Menores de 12 años')),           
+    tipo_usuario varchar(20) NOT NULL CHECK (tipo_usuario IN ('Socios', 'Invitados')),       
+    modalidad varchar(30) NOT NULL CHECK (modalidad IN ('Valor del dia', 'Valor de temporada', 'Valor del Mes')),         
     precio decimal(10,2) NOT NULL,
     vigencia_hasta date NOT NULL,
     fecha_creacion datetime DEFAULT GETDATE(),
-    activo bit DEFAULT 1,
-    
-    CONSTRAINT CK_PreciosAcceso_Categoria 
-        CHECK (categoria IN ('Adultos', 'Menores de 12 años')),
-    CONSTRAINT CK_PreciosAcceso_TipoUsuario 
-        CHECK (tipo_usuario IN ('Socios', 'Invitados')),
-    CONSTRAINT CK_PreciosAcceso_Modalidad 
-        CHECK (modalidad IN ('Valor del dia', 'Valor de temporada', 'Valor del Mes')),
+    activo bit DEFAULT 1,   
 );
 END
 GO
