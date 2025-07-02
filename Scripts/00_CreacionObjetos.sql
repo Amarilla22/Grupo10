@@ -48,11 +48,11 @@ CREATE TABLE eSocios.Socio (
     apellido varchar(50) NOT NULL,
     email nvarchar(100) CHECK (email LIKE '%@%.%' AND email NOT LIKE '%@%@%' AND email NOT LIKE '@%' AND email NOT LIKE '%@'),
     fecha_nac date NOT NULL,
-    telefono varchar(20),
-    telefono_emergencia varchar(20),
+    telefono bigint,
+    telefono_emergencia bigint,
     obra_social varchar(50),
     nro_obra_social varchar(15),
-	tel_obra_social varchar(30),
+	tel_obra_social bigint,
 	activo BIT DEFAULT 1 CHECK (activo IN (0,1)),
 	constraint FKSoc FOREIGN KEY (id_categoria) references eSocios.Categoria (id_categoria)
 );
@@ -69,7 +69,7 @@ CREATE TABLE eSocios.Tutor ( --Nuevo
 	DNI int UNIQUE NOT NULL,
     email nvarchar(100) NOT NULL UNIQUE CHECK (email LIKE '%@%.%'),
     fecha_nac date NOT NULL,
-    telefono varchar(20) NOT NULL
+    telefono bigint NOT NULL
 );
 END
 GO
@@ -176,7 +176,6 @@ CREATE TABLE eCobros.ItemFactura --Nuevo
 	id_factura int FOREIGN KEY references eCobros.Factura (id_factura),
     concepto varchar(100) NOT NULL,
     monto decimal(10, 2) NOT NULL,
-    periodo varchar(20) NOT NULL,
 );
 END
 GO

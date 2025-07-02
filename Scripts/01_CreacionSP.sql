@@ -23,8 +23,8 @@ CREATE OR ALTER PROCEDURE eSocios.insertarSocio
     @apellido VARCHAR(50),
     @email NVARCHAR(100),
     @fecha_nac DATE,
-    @telefono VARCHAR(20),
-    @telefono_emergencia VARCHAR(20),
+    @telefono BIGINT,
+    @telefono_emergencia BIGINT,
     @obra_social VARCHAR(50),
     @nro_obra_social VARCHAR(15)
 AS
@@ -93,7 +93,7 @@ BEGIN
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
 	END CATCH
-END; --------T
+END; 
 GO
 
 
@@ -103,8 +103,8 @@ CREATE OR ALTER PROCEDURE eSocios.ModificarSocio
 	@apellido VARCHAR(50),
     @email NVARCHAR(100),
     @fecha_nac DATE,
-    @telefono VARCHAR(20),
-    @telefono_emergencia VARCHAR(20),
+    @telefono BIGINT,
+    @telefono_emergencia BIGINT,
     @obra_social VARCHAR(50),
     @nro_obra_social VARCHAR(15)
 AS
@@ -155,8 +155,6 @@ END;
 GO
 
 
-
-
 --Verifica que exista un socio con el ID dado y luego de eso le asigna la actividad indicada por ID en la tabla Realiza
 
 CREATE OR ALTER PROCEDURE eSocios.AsignarActividad
@@ -190,7 +188,8 @@ CREATE OR ALTER PROCEDURE eSocios.AsignarActividad
 			THROW 50000, @ErrorMessage, 1;
 		END CATCH
 	END;
-	GO 
+	
+GO 
 
 
 CREATE OR ALTER PROCEDURE eSocios.CrearActividad
@@ -944,7 +943,7 @@ BEGIN
         DECLARE @apellido_tutor VARCHAR(50);
         DECLARE @email_tutor NVARCHAR(100);
         DECLARE @fecha_nac_tutor DATE;
-        DECLARE @telefono_tutor VARCHAR(10);
+        DECLARE @telefono_tutor BIGINT;
         
         SELECT @categoria_tutor = c.nombre,
                @nombre_tutor = s.nombre,
@@ -998,7 +997,7 @@ BEGIN
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         THROW 50000, @ErrorMessage, 1;
     END CATCH
-END; --------------
+END;
 GO
 
 
@@ -1008,7 +1007,7 @@ CREATE OR ALTER PROCEDURE eSocios.ModificarTutor
 		@apellido VARCHAR(50),
 		@email NVARCHAR(100),
 		@fecha_nac DATE,
-		@telefono VARCHAR(10),
+		@telefono BIGINT,
 		@parentesco VARCHAR(20)
 	AS
 	BEGIN
@@ -1075,7 +1074,7 @@ CREATE OR ALTER PROCEDURE eSocios.EliminarTutor
 			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
 			THROW 60100, @ErrorMessage, 1;
 		END CATCH
-	END; ----R
+	END;
 	GO
 
 
