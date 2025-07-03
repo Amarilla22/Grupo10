@@ -11,8 +11,8 @@ Integrantes:
 - Fleita Thiago , DNI: 45233264
 */
 
-use Com5600G10
-go
+USE Com5600G10
+GO
 
 -- =========================
 -- TEST: Crear un nuevo usuario válido

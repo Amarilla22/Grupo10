@@ -12,8 +12,8 @@ Integrantes:
 */
 
 --Creacion de roles
-use Com5600G10
-go
+USE Com5600G10
+GO
 
 --Creacion de roles
 CREATE ROLE JefeTesoreria;

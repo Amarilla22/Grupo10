@@ -16,7 +16,6 @@ USE Com5600G10
 GO
 
 
-
 -- se inserta un socio, si es menor de edad es requerido un tutor
 CREATE OR ALTER PROCEDURE eSocios.insertarSocio
     @id_socio VARCHAR(20),

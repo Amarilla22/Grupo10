@@ -3,6 +3,7 @@ USE Com5600G10
 GO
 
 
+
 CREATE OR ALTER PROCEDURE eImportacion.ImportarTarifasCategorias
     @RutaArchivo NVARCHAR(500)
 AS
@@ -238,7 +239,7 @@ GO
 EXEC eImportacion.ImportarTarifasActividades @RutaArchivo = 'S:\importacion\Datos socios.xlsx'
 GO
 
-CREATE OR ALTER PROCEDURE ImportarResponsablesDePago
+CREATE OR ALTER PROCEDURE eImportacion.ImportarResponsablesDePago
     @RutaArchivo NVARCHAR(260),
     @IdCategoria INT
 AS
@@ -370,7 +371,7 @@ EXEC eImportacion.ImportarResponsablesDePago @RutaArchivo = 'S:\importacion\Dato
 go
 
 
-CREATE OR ALTER PROCEDURE ImportarGrupoFamiliar
+CREATE OR ALTER PROCEDURE eImportacion.ImportarGrupoFamiliar
     @RutaArchivo NVARCHAR(500)
 AS
 BEGIN
@@ -527,28 +528,41 @@ BEGIN
       AND s.id_socio IS NULL;
     
     -- INSERTAR SOCIOS VÁLIDOS (sin errores)
-    INSERT INTO eSocios.Socio (
-        id_socio, id_categoria, dni, nombre, apellido, email, 
-        fecha_nac, telefono, telefono_emergencia, obra_social, 
-        nro_obra_social, tel_obra_social, activo
-    )
-    SELECT 
-        dl.nro_socio,
-        1, -- id_categoria por defecto
-        dl.dni,
-        dl.nombre,
-        dl.apellido,
-        dl.email,
-        dl.fecha_nac,
-        dl.telefono,
-        dl.telefono_emergencia,
-        dl.obra_social,
-        dl.nro_obra_social,
-        dl.tel_obra_social,
-        1 -- activo
-    FROM #DatosLimpios dl
-    WHERE dl.nro_socio NOT IN (SELECT nro_socio FROM #Errores WHERE nro_socio IS NOT NULL);
-    
+    -- INSERTAR SOCIOS VÁLIDOS con categoría dinámica según edad
+	INSERT INTO eSocios.Socio (
+		id_socio, id_categoria, dni, nombre, apellido, email, 
+		fecha_nac, telefono, telefono_emergencia, obra_social, 
+		nro_obra_social, tel_obra_social, activo
+	)
+	SELECT 
+		dl.nro_socio,
+		cat.id_categoria,
+		dl.dni,
+		dl.nombre,
+		dl.apellido,
+		dl.email,
+		dl.fecha_nac,
+		dl.telefono,
+		dl.telefono_emergencia,
+		dl.obra_social,
+		dl.nro_obra_social,
+		dl.tel_obra_social,
+		1 -- activo
+	FROM #DatosLimpios dl
+	CROSS APPLY (
+		SELECT DATEDIFF(YEAR, dl.fecha_nac, GETDATE()) 
+			   - CASE 
+				   WHEN MONTH(dl.fecha_nac) > MONTH(GETDATE()) 
+						OR (MONTH(dl.fecha_nac) = MONTH(GETDATE()) AND DAY(dl.fecha_nac) > DAY(GETDATE()))
+				   THEN 1 ELSE 0
+				 END AS edad
+	) AS edad_calc
+	INNER JOIN eSocios.Categoria cat ON 
+		(edad_calc.edad < 12 AND cat.nombre = 'Menor')
+		OR (edad_calc.edad BETWEEN 12 AND 17 AND cat.nombre = 'Cadete')
+		OR (edad_calc.edad >= 18 AND cat.nombre = 'Mayor')
+	WHERE dl.nro_socio NOT IN (SELECT nro_socio FROM #Errores WHERE nro_socio IS NOT NULL);
+
     -- INSERTAR TUTORES QUE NO EXISTEN (adaptando lógica de tu amigo con JOIN)
     WITH TutoresAInsertar AS (
         SELECT DISTINCT 
@@ -913,7 +927,6 @@ GO
 
 EXEC eImportacion.ImportarPresentismo @RutaArchivo = 'S:\importacion\Datos socios.xlsx'
 GO
-
 
 
 --no funciona

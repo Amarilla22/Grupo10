@@ -16,8 +16,8 @@ Integrantes:
 -- Resultado esperado: Usuario creado con éxito.
 -- ================================
 
-use Com5600G10
-go
+USE Com5600G10
+GO
 
 EXEC eAdministrativos.CrearUsuario
     @rol = 'AdministrativoSocio',

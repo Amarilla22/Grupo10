@@ -23,8 +23,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'eAdministrativos')
 	EXEC ('CREATE SCHEMA eAdministrativos');
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'eAdministrativos')
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'eImportacion')
 	EXEC ('CREATE SCHEMA eImportacion');
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'eReportes')
+	EXEC ('CREATE SCHEMA eReportes');
 GO
 
 
