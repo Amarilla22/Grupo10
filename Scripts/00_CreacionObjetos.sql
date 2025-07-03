@@ -23,6 +23,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'eAdministrativos')
 	EXEC ('CREATE SCHEMA eAdministrativos');
 GO
 
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'eAdministrativos')
+	EXEC ('CREATE SCHEMA eImportacion');
+GO
+
+
 
 
 --CREACION DE TABLA CATEGORIA
