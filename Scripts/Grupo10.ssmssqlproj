@@ -3,7 +3,7 @@
   <Items>
     <LogicalFolder Name="Connections" Type="2" Sorted="true">
       <Items>
-        <ConnectionNode Name="(local):DESKTOP-T4T2FOL\Pc">
+        <ConnectionNode Name="(local):DESKTOP-CACMJS4\Galo">
           <Created>2025-05-23T00:07:46.1275771-03:00</Created>
           <Type>SQL</Type>
           <Server>(local)</Server>
@@ -11,11 +11,28 @@
           <Authentication>Windows Authentication</Authentication>
           <InitialDB />
           <LoginTimeout>30</LoginTimeout>
+          <TrustServerCertificate>False</TrustServerCertificate>
+          <EncryptionOption>True</EncryptionOption>
           <ExecutionTimeout>0</ExecutionTimeout>
           <ConnectionProtocol>NotSpecified</ConnectionProtocol>
           <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
         </ConnectionNode>
-        <ConnectionNode Name="DESKTOP-T4T2FOL\SQLEXPRESS01:DESKTOP-T4T2FOL\Pc">
+        <ConnectionNode Name="DESKTOP-CACMJS4\SQLEXPRESS:DESKTOP-CACMJS4\Galo">
+          <Created>2025-07-02T00:47:08.194633-03:00</Created>
+          <Type>SQL</Type>
+          <Server>DESKTOP-CACMJS4\SQLEXPRESS</Server>
+          <UserName />
+          <Authentication>Windows Authentication</Authentication>
+          <InitialDB />
+          <LoginTimeout>30</LoginTimeout>
+          <TrustServerCertificate>True</TrustServerCertificate>
+          <HostNameInServerCertificate />
+          <EncryptionOption>True</EncryptionOption>
+          <ExecutionTimeout>0</ExecutionTimeout>
+          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
+          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
+        </ConnectionNode>
+        <ConnectionNode Name="DESKTOP-T4T2FOL\SQLEXPRESS01:DESKTOP-CACMJS4\Galo">
           <Created>2025-07-01T12:59:48.1619655-03:00</Created>
           <Type>SQL</Type>
           <Server>DESKTOP-T4T2FOL\SQLEXPRESS01</Server>
@@ -23,11 +40,13 @@
           <Authentication>Windows Authentication</Authentication>
           <InitialDB />
           <LoginTimeout>30</LoginTimeout>
+          <TrustServerCertificate>False</TrustServerCertificate>
+          <EncryptionOption>True</EncryptionOption>
           <ExecutionTimeout>0</ExecutionTimeout>
           <ConnectionProtocol>NotSpecified</ConnectionProtocol>
           <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
         </ConnectionNode>
-        <ConnectionNode Name="GCX-PC\SQLEXPRESS:DESKTOP-T4T2FOL\Pc">
+        <ConnectionNode Name="GCX-PC\SQLEXPRESS:DESKTOP-CACMJS4\Galo">
           <Created>2025-06-30T12:04:05.3055247-03:00</Created>
           <Type>SQL</Type>
           <Server>GCX-PC\SQLEXPRESS</Server>
@@ -35,6 +54,8 @@
           <Authentication>Windows Authentication</Authentication>
           <InitialDB />
           <LoginTimeout>30</LoginTimeout>
+          <TrustServerCertificate>False</TrustServerCertificate>
+          <EncryptionOption>True</EncryptionOption>
           <ExecutionTimeout>0</ExecutionTimeout>
           <ConnectionProtocol>NotSpecified</ConnectionProtocol>
           <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
@@ -44,32 +65,32 @@
     <LogicalFolder Name="Queries" Type="0" Sorted="true">
       <Items>
         <FileNode Name="00_CreacionObjetos.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-CACMJS4\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-CACMJS4\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>00_CreacionObjetos.sql</FullPath>
         </FileNode>
         <FileNode Name="01_CreacionSP.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-CACMJS4\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-CACMJS4\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>01_CreacionSP.sql</FullPath>
         </FileNode>
-        <FileNode Name="02_Prueba_actividad.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
+        <FileNode Name="02_Prueba_Socios.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-CACMJS4\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-CACMJS4\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
-          <FullPath>02_Prueba_actividad.sql</FullPath>
+          <FullPath>02_Prueba_Socios.sql</FullPath>
         </FileNode>
-        <FileNode Name="03_Prueba_GrupoFamiliar.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
+        <FileNode Name="03_Prueba_ActividadesYCategorias.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-CACMJS4\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-CACMJS4\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
-          <FullPath>03_Prueba_GrupoFamiliar.sql</FullPath>
+          <FullPath>03_Prueba_ActividadesYCategorias.sql</FullPath>
         </FileNode>
         <FileNode Name="04_Prueba_eCobros.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-CACMJS4\SQLEXPRESS:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-CACMJS4\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>04_Prueba_eCobros.sql</FullPath>
         </FileNode>
@@ -90,12 +111,6 @@
           <AssociatedConnSrvName>GCX-PC\SQLEXPRESS</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>07_Testeos.sql</FullPath>
-        </FileNode>
-        <FileNode Name="Prueba_Rocio.sql">
-          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
-          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
-          <AssociatedConnUserName />
-          <FullPath>Prueba_Rocio.sql</FullPath>
         </FileNode>
       </Items>
     </LogicalFolder>

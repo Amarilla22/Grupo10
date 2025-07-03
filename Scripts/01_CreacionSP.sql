@@ -16,1072 +16,1044 @@ USE Com5600G10
 GO
 
 
+
+-- se inserta un socio, si es menor de edad es requerido un tutor
 CREATE OR ALTER PROCEDURE eSocios.insertarSocio
-    @id_grupo_familiar INT,
-    @dni VARCHAR(15),
+    @id_socio VARCHAR(20),
+    @dni INT,
     @nombre VARCHAR(50),
     @apellido VARCHAR(50),
     @email NVARCHAR(100),
     @fecha_nac DATE,
-    @telefono BIGINT,
-    @telefono_emergencia BIGINT,
-    @obra_social VARCHAR(50),
-    @nro_obra_social VARCHAR(15)
+    @telefono BIGINT = NULL,
+    @telefono_emergencia BIGINT = NULL,
+    @obra_social VARCHAR(50) = NULL,
+    @nro_obra_social VARCHAR(15) = NULL,
+    @tel_obra_social VARCHAR(30) = NULL,
+    @activo BIT = 1,
+    @id_tutor VARCHAR(20) = NULL,
+    @parentesco VARCHAR(20) = NULL
 AS
 BEGIN
-    DECLARE @edad INT
-    DECLARE @nombre_categoria VARCHAR(20)
-    DECLARE @id_categoria INT
+    SET NOCOUNT ON;
 
-    -- calcula edad
-    SET @edad = DATEDIFF(YEAR, @fecha_nac, GETDATE())
-    IF DATEADD(YEAR, @edad, @fecha_nac) > GETDATE()
-        SET @edad = @edad - 1
+    BEGIN TRY
 
-    -- determina la categoría por edad
-    IF @edad <= 12
-        SET @nombre_categoria = 'Menor'
-    ELSE IF @edad BETWEEN 13 AND 17
-        SET @nombre_categoria = 'Cadete'
-    ELSE
-        SET @nombre_categoria = 'Mayor'
+        -- valida duplicados
+        IF EXISTS 
+        (
+            SELECT 1 FROM eSocios.Socio 
+            WHERE dni = @dni OR id_socio = @id_socio
+        )
+        BEGIN
+            PRINT 'Error: Ya existe un socio con ese DNI o ID.';
+            RETURN;
+        END
 
-    -- obtiene el id_categoria desde la tabla Categoria
-    SELECT @id_categoria = id_categoria
-    FROM eSocios.Categoria
-    WHERE nombre = @nombre_categoria
+        DECLARE @edad INT, @categoria_nombre VARCHAR(50), @id_categoria INT;
 
-    IF @id_categoria IS NULL
-    BEGIN
-        RAISERROR('No se encontró la categoría correspondiente: %s', 16, 1, @nombre_categoria)
-        RETURN
-    END
+        -- calcula edad
+        SET @edad = DATEDIFF(YEAR, @fecha_nac, GETDATE()) -
+                    CASE 
+                        WHEN DATEADD(YEAR, DATEDIFF(YEAR, @fecha_nac, GETDATE()), @fecha_nac) > GETDATE()
+                        THEN 1 ELSE 0 
+                    END;
 
-    -- inserta el socio
-    INSERT INTO eSocios.Socio 
-    (
-        id_grupo_familiar, id_categoria, dni, nombre, apellido, email,
-        fecha_nac, telefono, telefono_emergencia, obra_social, nro_obra_social
-    )
-    VALUES 
-    (
-        @id_grupo_familiar, @id_categoria, @dni, @nombre, @apellido, @email,
-        @fecha_nac, @telefono, @telefono_emergencia, @obra_social, @nro_obra_social
-    )
+        -- determina categoría según edad
+        IF @edad < 12
+            SET @categoria_nombre = 'Menor';
+        ELSE IF @edad BETWEEN 12 AND 17
+            SET @categoria_nombre = 'Cadete';
+        ELSE
+            SET @categoria_nombre = 'Mayor';
+
+        -- obtiene ID de categoría
+        SELECT TOP 1 @id_categoria = id_categoria
+        FROM eSocios.Categoria
+        WHERE nombre = @categoria_nombre
+        ORDER BY vigencia DESC;
+
+        IF @id_categoria IS NULL
+        BEGIN
+            PRINT 'Error: No se encontró la categoría correspondiente a la edad.';
+            RETURN;
+        END
+
+        -- si es menor de edad requiere un tutor
+        IF @edad < 18
+        BEGIN
+            IF @id_tutor IS NULL
+            BEGIN
+                PRINT 'Error: Este socio es menor de edad y requiere un tutor.';
+                RETURN;
+            END
+
+			-- valida que el tutor exista
+			IF NOT EXISTS 
+			(
+				SELECT 1 FROM eSocios.Tutor WHERE id_tutor = @id_tutor
+			)
+			BEGIN
+				PRINT 'Error: El tutor especificado no existe.';
+				RETURN;
+			END
+		END
+
+        -- inserta en socio
+        INSERT INTO eSocios.Socio 
+        (
+            id_socio, id_categoria, dni, nombre, apellido, email, fecha_nac, telefono,
+            telefono_emergencia, obra_social, nro_obra_social, tel_obra_social, activo
+        )
+        VALUES 
+        (
+            @id_socio, @id_categoria, @dni, @nombre, @apellido, @email, @fecha_nac, @telefono,
+            @telefono_emergencia, @obra_social, @nro_obra_social, @tel_obra_social, @activo
+        );
+
+        PRINT 'Socio insertado correctamente.';
+
+		IF @id_tutor IS NOT NULL
+		BEGIN
+			DECLARE @socio_existente VARCHAR(20);
+			DECLARE @descuento_existente DECIMAL(10,2);
+
+			-- verifica si el tutor ya tiene otro socio relacionado
+			SELECT TOP 1 
+				@socio_existente = id_socio, 
+				@descuento_existente = descuento
+			FROM eSocios.GrupoFamiliar
+			WHERE id_tutor = @id_tutor;
+
+			IF @socio_existente IS NOT NULL
+			BEGIN
+				IF @descuento_existente > 0
+				BEGIN
+					-- el tutor ya tiene grupo con descuento, se asigna al nuevo socio también
+					INSERT INTO eSocios.GrupoFamiliar (id_socio, id_tutor, descuento, parentesco)
+					VALUES (@id_socio, @id_tutor, @descuento_existente, @parentesco);
+				END
+				ELSE
+				BEGIN
+					-- si el grupo no tiene descuento, se aplica a ambos
+					INSERT INTO eSocios.GrupoFamiliar (id_socio, id_tutor, descuento, parentesco)
+					VALUES (@id_socio, @id_tutor, 15, @parentesco);
+
+					UPDATE eSocios.GrupoFamiliar
+					SET descuento = 15
+					WHERE id_socio = @socio_existente AND id_tutor = @id_tutor;
+				END
+			END
+			ELSE
+			BEGIN
+				-- primer socio del tutor, sin descuento
+				INSERT INTO eSocios.GrupoFamiliar (id_socio, id_tutor, descuento, parentesco)
+				VALUES (@id_socio, @id_tutor, 0, @parentesco);
+			END
+		END
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
 END
 GO
 
-
-CREATE OR ALTER PROCEDURE eSocios.EliminarSocio
-	@id_socio INT
-AS
-BEGIN
-	SET NOCOUNT ON;
-
-	BEGIN TRY
-		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio AND activo = 1)
-			THROW 50001, 'El socio no existe o ya fue dado de baja.', 1;
-
-		--borrado logico
-		UPDATE eSocios.Socio
-		SET activo = 0
-		WHERE id_socio = @id_socio;
-
-		PRINT 'Socio eliminado con éxito.';
-	END TRY
-	BEGIN CATCH
-		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
-		THROW 50000, @msg, 1;
-	END CATCH
-END; 
-GO
-
-
-CREATE OR ALTER PROCEDURE eSocios.ModificarSocio
-	@id_socio INT,
-	@nombre VARCHAR(50),
-	@apellido VARCHAR(50),
+-- modifica los dato de un socio
+CREATE OR ALTER PROCEDURE eSocios.modificarSocio
+    @id_socio VARCHAR(20),
+    @id_categoria INT,
+    @dni INT,
+    @nombre VARCHAR(50),
+    @apellido VARCHAR(50),
     @email NVARCHAR(100),
     @fecha_nac DATE,
-    @telefono BIGINT,
-    @telefono_emergencia BIGINT,
-    @obra_social VARCHAR(50),
-    @nro_obra_social VARCHAR(15)
+    @telefono BIGINT = NULL,
+    @telefono_emergencia BIGINT = NULL,
+    @obra_social VARCHAR(50) = NULL,
+    @nro_obra_social VARCHAR(15) = NULL,
+    @tel_obra_social VARCHAR(30) = NULL
 AS
 BEGIN
-	SET NOCOUNT ON;
+    SET NOCOUNT ON;
 
-	BEGIN TRY
-		--Validar que el socio exista y esté activo
-		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio AND activo = 1)
-			THROW 50001, 'El socio no existe o esta inactivo.', 1;
+    BEGIN TRY
+        -- verifica que exista el socio
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Socio 
+			WHERE id_socio = @id_socio
+        )
+        BEGIN
+            PRINT 'El socio no existe';
+            RETURN;
+        END
 
-		--Validar formato email
-		IF @email NOT LIKE '%@%.%'
-			THROW 50002, 'Formato de email invalido.', 1;
+        -- verifica que exista la categoria
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Categoria 
+			WHERE id_categoria = @id_categoria
+        )
+        BEGIN
+            PRINT 'La categoría especificada no existe';
+            RETURN;
+        END
 
-		IF @telefono IS NOT NULL
-		BEGIN
-			IF @telefono LIKE '%[^0-9]%'
-				THROW 50003, 'Formato de telefono inválido.', 1;
-		END
+        -- verifica que no exista otro socio con ese DNI
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.Socio 
+            WHERE dni = @dni AND id_socio <> @id_socio
+        )
+        BEGIN
+            PRINT 'Ya existe otro socio con ese DNI';
+            RETURN;
+        END
 
-		IF @telefono_emergencia IS NOT NULL
-		BEGIN
-			IF @telefono_emergencia LIKE '%[^0-9]%'
-				THROW 50004, 'Formato de telefono de emergencia inválido.', 1;
-		END
+        -- actualiza datos y reactiva si estaba inactivo
+        UPDATE eSocios.Socio
+        SET 
+            id_categoria = @id_categoria,
+            dni = @dni,
+            nombre = @nombre,
+            apellido = @apellido,
+            email = @email,
+            fecha_nac = @fecha_nac,
+            telefono = @telefono,
+            telefono_emergencia = @telefono_emergencia,
+            obra_social = @obra_social,
+            nro_obra_social = @nro_obra_social,
+            tel_obra_social = @tel_obra_social,
+            activo = 1 -- reactiva en todos los casos
+        WHERE id_socio = @id_socio;
+        PRINT 'Socio modificado correctamente.';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
 
-		--Actualizacion
-		UPDATE eSocios.Socio
-		SET
-			nombre = COALESCE(@nombre,nombre),
-            apellido = COALESCE(@apellido, apellido),
-            email = COALESCE(@email, email),
-			fecha_nac = COALESCE(@fecha_nac, fecha_nac),
-			telefono = COALESCE(@telefono,telefono),
-            telefono_emergencia = COALESCE(@telefono_emergencia, telefono_emergencia),
-            obra_social = COALESCE(@obra_social, obra_social),
-            nro_obra_social = COALESCE(@nro_obra_social, nro_obra_social)
-		WHERE id_socio = @id_socio;
+-- da de baja un socio
+CREATE OR ALTER PROCEDURE eSocios.eliminarSocio
+    @id_socio VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
 
-		PRINT 'Socio modificado con éxito.';
-	END TRY
-	BEGIN CATCH
-		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
-		THROW 50000, @msg, 1;
-	END CATCH
-END;
+    BEGIN TRY
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Socio 
+			WHERE id_socio = @id_socio
+        )
+        BEGIN
+            PRINT 'El socio no existe.';
+            RETURN;
+        END
+
+        UPDATE eSocios.Socio
+        SET activo = 0
+        WHERE id_socio = @id_socio;
+
+        PRINT CONCAT('Dado de baja Socio ', @id_socio);
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
 GO
 
 
---Verifica que exista un socio con el ID dado y luego de eso le asigna la actividad indicada por ID en la tabla Realiza
 
-CREATE OR ALTER PROCEDURE eSocios.AsignarActividad
-		@id_socio INT,
-		@id_actividad INT
-	AS
-	BEGIN
-		SET NOCOUNT ON;
-    
-		BEGIN TRY
-			-- Verificar que el socio existe
-			IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
-				THROW 50001, 'El socio no existe', 1;
+--agrega los datos de un tutor
+CREATE OR ALTER PROCEDURE eSocios.agregarTutor
+    @id_tutor VARCHAR(20),
+    @nombre VARCHAR(50),
+    @apellido VARCHAR(50),
+    @DNI INT,
+    @email NVARCHAR(100),
+    @fecha_nac DATE,
+    @telefono BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- valida duplicados por ID o DNI o Email
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.Tutor 
+            WHERE id_tutor = @id_tutor OR DNI = @DNI OR email = @email
+        )
+        BEGIN
+            PRINT 'Error: Ya existe un tutor con ese ID, DNI o email.';
+            RETURN;
+        END
+
+        -- insertar el tutor
+        INSERT INTO eSocios.Tutor 
+		(
+            id_tutor, nombre, apellido, DNI, email, fecha_nac, telefono
+        ) 
+		VALUES 
+		(
+            @id_tutor, @nombre, @apellido, @DNI, @email, @fecha_nac, @telefono
+        );
+
+        PRINT 'Tutor agregado correctamente.';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+--modifica los datos de un tutor
+CREATE OR ALTER PROCEDURE eSocios.modificarTutor
+    @id_tutor VARCHAR(20),
+    @nombre VARCHAR(50),
+    @apellido VARCHAR(50),
+    @DNI INT,
+    @email NVARCHAR(100),
+    @fecha_nac DATE,
+    @telefono BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- verifica existencia del tutor
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Tutor WHERE id_tutor = @id_tutor
+        )
+        BEGIN
+            PRINT 'Error: El tutor especificado no existe.';
+            RETURN;
+        END
+
+        -- valida que DNI o email no estén en uso por otro tutor
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.Tutor 
+            WHERE (DNI = @DNI OR email = @email) AND id_tutor <> @id_tutor
+        )
+        BEGIN
+            PRINT 'Error: El DNI o el email ya están en uso por otro tutor.';
+            RETURN;
+        END
+
+        -- actualiza datos
+        UPDATE eSocios.Tutor
+        SET nombre = @nombre,
+            apellido = @apellido,
+            DNI = @DNI,
+            email = @email,
+            fecha_nac = @fecha_nac,
+            telefono = @telefono
+        WHERE id_tutor = @id_tutor;
+
+        PRINT 'Tutor modificado correctamente.';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+--elimina los datos de un tutor
+CREATE OR ALTER PROCEDURE eSocios.eliminarTutor
+    @id_tutor VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- verifica que el tutor existe
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Tutor WHERE id_tutor = @id_tutor
+        )
+        BEGIN
+            PRINT 'Error: El tutor no existe.';
+            RETURN;
+        END
+
+        -- verifica que no tenga socios asociados
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.GrupoFamiliar WHERE id_tutor = @id_tutor
+        )
+        BEGIN
+            PRINT 'Error: No se puede eliminar el tutor porque tiene socios vinculados.';
+            RETURN;
+        END
+
+        -- eliminar tutor
+        DELETE FROM eSocios.Tutor WHERE id_tutor = @id_tutor;
+
+        PRINT 'Tutor eliminado correctamente.';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+
+
+-- agrega un socio a un grupo familiar
+CREATE OR ALTER PROCEDURE eSocios.agregarAGrupoFamiliar
+	@id_socio VARCHAR(20),
+    @id_tutor VARCHAR(20),
+	@parentesco VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- verifica que el socio exista
+        IF NOT EXISTS 
+		(
+			SELECT 1 FROM eSocios.Socio 
+			WHERE id_socio = @id_socio
+		)
+        BEGIN
+            PRINT 'El socio no existe';
+            RETURN;
+        END
+
+        -- verifica que el tutor exista
+        IF NOT EXISTS 
+		(
+			SELECT 1 FROM eSocios.Tutor 
+			WHERE id_tutor = @id_tutor
+		)
+        BEGIN
+            PRINT 'El tutor no existe';
+            RETURN;
+        END
+
+        -- verificar que no tenga ya un grupo familiar asignado
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.GrupoFamiliar 
+			WHERE id_socio = @id_socio
+        )
+        BEGIN
+            PRINT 'El socio ya tiene un grupo familiar asignado';
+            RETURN;
+        END
+
+		-- busca si el tutor ya tiene al menos un socio vinculado
+        DECLARE @socio_existente VARCHAR(20);
+        DECLARE @descuento_existente DECIMAL(10,2);
+
+        SELECT TOP 1 
+            @socio_existente = id_socio, 
+            @descuento_existente = descuento
+        FROM eSocios.GrupoFamiliar
+        WHERE id_tutor = @id_tutor;
+
+        IF @socio_existente IS NOT NULL
+        BEGIN
+            IF @descuento_existente > 0
+            BEGIN
+                -- el grupo familiar ya posee descuento
+                INSERT INTO eSocios.GrupoFamiliar (id_socio, id_tutor, descuento, parentesco)
+                VALUES (@id_socio, @id_tutor, @descuento_existente, @parentesco);
+            END
+            ELSE
+            BEGIN
+                -- sin descuento, se otorgan descuentos a ambos
+                INSERT INTO eSocios.GrupoFamiliar (id_socio, id_tutor, descuento, parentesco)
+                VALUES (@id_socio, @id_tutor, 15, @parentesco);
+
+                UPDATE eSocios.GrupoFamiliar
+                SET descuento = 15
+                WHERE id_socio = @socio_existente AND id_tutor = @id_tutor;
+            END
+        END
+        ELSE
+        BEGIN
+            -- primer socio del grupo, sin descuento
+            INSERT INTO eSocios.GrupoFamiliar (id_socio, id_tutor, descuento, parentesco)
+            VALUES (@id_socio, @id_tutor, 0, @parentesco);
+        END
+
+        PRINT 'Socio agregado al grupo familiar correctamente.';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+-- cada un socio a un grupo familiar
+CREATE OR ALTER PROCEDURE eSocios.sacarDeGrupoFamiliar
+    @id_socio VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- verifica que el socio este en un grupo familiar
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.GrupoFamiliar WHERE id_socio = @id_socio
+        )
+        BEGIN
+            PRINT 'El socio no pertenece a ningún grupo familiar.';
+            RETURN;
+        END
+
+        -- obtiene el tutor del grupo familiar
+        DECLARE @id_tutor VARCHAR(20);
+        SELECT @id_tutor = id_tutor
+        FROM eSocios.GrupoFamiliar
+        WHERE id_socio = @id_socio;
+
+        -- elimina al socio del grupo familiar
+        DELETE FROM eSocios.GrupoFamiliar
+        WHERE id_socio = @id_socio;
+
+        PRINT 'Socio removido del grupo familiar.';
+
+        -- verifica cuantos socios siguen vinculados al mismo tutor
+        DECLARE @cantidad_restante INT;
+        SELECT @cantidad_restante = COUNT(*)
+        FROM eSocios.GrupoFamiliar
+        WHERE id_tutor = @id_tutor;
+
+        -- si solo queda uno y tenía descuento 15, se lo quitamos
+        IF @cantidad_restante = 1
+        BEGIN
+            UPDATE eSocios.GrupoFamiliar
+            SET descuento = 0
+            WHERE id_tutor = @id_tutor;
             
-			-- Verificar que la actividad existe
-			IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
-				THROW 50002, 'La actividad no existe', 1;
-
-			--Verifico si ya está asignada (Para evitar duplicados)
-			IF EXISTS (SELECT 1 FROM eSocios.Realiza WHERE socio = @id_socio AND id_actividad = @id_actividad)
-				THROW 50003, 'El socio ya está asignado a esa actividad.', 1;
-            
-			-- Asignar actividad
-			INSERT INTO eSocios.Realiza (socio, id_actividad)
-			VALUES (@id_socio, @id_actividad);
-        
-			SELECT CONCAT('Actividad ', @id_actividad, ' asignada al socio ', @id_socio, ' con éxito.') AS Resultado;
-		END TRY
-		BEGIN CATCH
-			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-			THROW 50000, @ErrorMessage, 1;
-		END CATCH
-	END;
-	
-GO 
+            PRINT 'El tutor solo tiene un socio restante. Descuento eliminado.';
+        END
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
 
 
-CREATE OR ALTER PROCEDURE eSocios.CrearActividad
+
+-- agrega los datos de una actividad
+CREATE OR ALTER PROCEDURE eSocios.agregarCategoria
+    @nombre VARCHAR(50),
+    @costo_mensual DECIMAL(10,2),
+    @vigencia DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+		--verifica un costo mensual valido
+		IF @costo_mensual < 0
+			BEGIN
+				PRINT 'Costo mensual invalido';
+				RETURN;
+			END
+
+		-- verifica que la vigencia sea una fecha futura
+        IF @vigencia <= CAST(GETDATE() AS DATE)
+        BEGIN
+            PRINT 'La vigencia debe ser una fecha futura';
+            RETURN;
+        END
+
+        INSERT INTO eSocios.Categoria (nombre, costo_mensual, vigencia)
+        VALUES (@nombre, @costo_mensual, @vigencia);
+
+        PRINT 'Categoría agregada correctamente.';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+-- modifica los datos de una categoria
+CREATE OR ALTER PROCEDURE eSocios.modificarCategoria
+    @id_categoria INT,
+    @nombre VARCHAR(50),
+    @costo_mensual DECIMAL(10,2),
+    @vigencia DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- verifica existencia
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Categoria WHERE id_categoria = @id_categoria
+        )
+        BEGIN
+            PRINT 'Error: La categoría no existe.';
+            RETURN;
+        END
+
+		--verifica un costo mensual valido
+		IF @costo_mensual < 0
+			BEGIN
+				PRINT 'Costo mensual invalido';
+				RETURN;
+			END
+
+		-- verifica que la vigencia sea una fecha futura
+        IF @vigencia <= CAST(GETDATE() AS DATE)
+        BEGIN
+            PRINT 'La vigencia debe ser una fecha futura';
+            RETURN;
+        END
+
+		--actualiza
+        UPDATE eSocios.Categoria
+        SET nombre = @nombre,
+            costo_mensual = @costo_mensual,
+            vigencia = @vigencia
+        WHERE id_categoria = @id_categoria;
+
+        PRINT 'Categoría modificada correctamente.';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+-- modifica los datos de una categoria
+CREATE OR ALTER PROCEDURE eSocios.eliminarCategoria
+    @id_categoria INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- verifica existencia
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Categoria WHERE id_categoria = @id_categoria
+        )
+        BEGIN
+            PRINT 'Error: La categoría no existe.';
+            RETURN;
+        END
+
+        -- verifica que no este asignada a socios
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.Socio WHERE id_categoria = @id_categoria
+        )
+        BEGIN
+            PRINT 'Error: No se puede eliminar la categoría porque está asignada a uno o más socios.';
+            RETURN;
+        END
+		--elimina
+        DELETE FROM eSocios.Categoria WHERE id_categoria = @id_categoria;
+
+        PRINT 'Categoría eliminada correctamente.';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+
+
+-- crea una actividad
+CREATE OR ALTER PROCEDURE eSocios.crearActividad
     @nombre NVARCHAR(50),
     @costo_mensual DECIMAL(10,2),
-    @dias NVARCHAR(200) = NULL, -- Días separados por coma: 'lunes,miércoles,viernes'
-    @horarios NVARCHAR(200) = NULL -- Horarios separados por coma: '09:00-10:00,18:00-19:00'
+    @vigencia DATE
 AS
 BEGIN
     SET NOCOUNT ON;
-    
-    DECLARE @id_actividad INT;
-    DECLARE @error_message NVARCHAR(500);
-    DECLARE @dia VARCHAR(20);
-    DECLARE @horario VARCHAR(20);
-    DECLARE @hora_inicio TIME;
-    DECLARE @hora_fin TIME;
-    DECLARE @pos INT;
-    
+
     BEGIN TRY
-        BEGIN TRANSACTION;
-        
-        -- Validaciones básicas
-        IF @nombre IS NULL OR TRIM(@nombre) = ''
+		IF @costo_mensual < 0
+			BEGIN
+				PRINT 'Costo mensual invalido';
+				RETURN;
+			END
+
+		 -- verifica que la vigencia sea una fecha futura
+        IF @vigencia <= CAST(GETDATE() AS DATE)
         BEGIN
-            RAISERROR('El nombre de la actividad es obligatorio', 16, 1);
+            PRINT 'La vigencia debe ser una fecha futura';
             RETURN;
         END
-        
-        IF @costo_mensual IS NULL OR @costo_mensual < 0
-        BEGIN
-            RAISERROR('El costo mensual debe ser mayor o igual a 0', 16, 1);
-            RETURN;
-        END
-        
-        -- Verificar si ya existe una actividad con el mismo nombre
-        IF EXISTS (SELECT 1 FROM eSocios.Actividad WHERE nombre = @nombre)
-        BEGIN
-            RAISERROR('Ya existe una actividad con ese nombre', 16, 1);
-            RETURN;
-        END
-        
-        -- Validar que si se pasan días también se pasen horarios y viceversa
-        IF (@dias IS NOT NULL AND @horarios IS NULL) OR (@dias IS NULL AND @horarios IS NOT NULL)
-        BEGIN
-            RAISERROR('Si especifica días debe especificar horarios y viceversa', 16, 1);
-            RETURN;
-        END
-        
-        -- Crear la actividad
-        INSERT INTO eSocios.Actividad (nombre, costo_mensual)
-        VALUES (@nombre, @costo_mensual);
-        
-        SET @id_actividad = SCOPE_IDENTITY();
-        
-        -- Si se proporcionaron días y horarios, procesarlos
-        IF @dias IS NOT NULL AND @horarios IS NOT NULL
-        BEGIN
-            -- Crear tabla temporal para combinar días y horarios
-            CREATE TABLE #TempDias (dia VARCHAR(20));
-            CREATE TABLE #TempHorarios (hora_inicio TIME, hora_fin TIME);
-            CREATE TABLE #TempCombinacion (dia VARCHAR(20), hora_inicio TIME, hora_fin TIME);
-            
-            -- Procesar días (separados por coma)
-            DECLARE @dias_temp NVARCHAR(200) = @dias + ',';
-            WHILE CHARINDEX(',', @dias_temp) > 0
-            BEGIN
-                SET @pos = CHARINDEX(',', @dias_temp);
-                SET @dia = LTRIM(RTRIM(SUBSTRING(@dias_temp, 1, @pos - 1)));
-                
-                -- Validar día
-                IF @dia NOT IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
-                BEGIN
-                    RAISERROR('Día inválido: %s. Debe ser: lunes, martes, miércoles, jueves, viernes, sábado, domingo', 16, 1, @dia);
-                    RETURN;
-                END
-                
-                INSERT INTO #TempDias (dia) VALUES (@dia);
-                SET @dias_temp = SUBSTRING(@dias_temp, @pos + 1, LEN(@dias_temp));
-            END
-            
-            -- Procesar horarios (formato: '09:00-10:00,18:00-19:00')
-            DECLARE @horarios_temp NVARCHAR(200) = @horarios + ',';
-            WHILE CHARINDEX(',', @horarios_temp) > 0
-            BEGIN
-                SET @pos = CHARINDEX(',', @horarios_temp);
-                SET @horario = LTRIM(RTRIM(SUBSTRING(@horarios_temp, 1, @pos - 1)));
-                
-                -- Validar formato horario (debe contener guión)
-                IF CHARINDEX('-', @horario) = 0
-                BEGIN
-                    RAISERROR('Formato de horario inválido: %s. Use formato HH:MM-HH:MM', 16, 1, @horario);
-                    RETURN;
-                END
-                
-                -- Extraer hora inicio y fin
-                SET @hora_inicio = CAST(SUBSTRING(@horario, 1, CHARINDEX('-', @horario) - 1) AS TIME);
-                SET @hora_fin = CAST(SUBSTRING(@horario, CHARINDEX('-', @horario) + 1, LEN(@horario)) AS TIME);
-                
-                -- Validar que hora inicio < hora fin
-                IF @hora_inicio >= @hora_fin
-                BEGIN
-                    RAISERROR('La hora de inicio debe ser menor que la hora de fin: %s', 16, 1, @horario);
-                    RETURN;
-                END
-                
-                INSERT INTO #TempHorarios (hora_inicio, hora_fin) VALUES (@hora_inicio, @hora_fin);
-                SET @horarios_temp = SUBSTRING(@horarios_temp, @pos + 1, LEN(@horarios_temp));
-            END
-            
-            -- Crear todas las combinaciones día-horario
-            INSERT INTO #TempCombinacion (dia, hora_inicio, hora_fin)
-            SELECT d.dia, h.hora_inicio, h.hora_fin
-            FROM #TempDias d
-            CROSS JOIN #TempHorarios h;
-            
-            -- Verificar solapamientos de horarios en el mismo día
-            IF EXISTS (
-                SELECT dia 
-                FROM #TempCombinacion t1
-                WHERE EXISTS (
-                    SELECT 1 FROM #TempCombinacion t2 
-                    WHERE t1.dia = t2.dia 
-                        AND t1.hora_inicio != t2.hora_inicio
-                        AND (t1.hora_inicio < t2.hora_fin AND t1.hora_fin > t2.hora_inicio)
-                )
-            )
-            BEGIN
-                RAISERROR('Hay horarios que se solapan en el mismo día', 16, 1);
-                RETURN;
-            END
-            
-            -- Insertar todas las combinaciones
-            INSERT INTO eSocios.ActividadDiaHorario (id_actividad, dia, hora_inicio, hora_fin)
-            SELECT @id_actividad, dia, hora_inicio, hora_fin
-            FROM #TempCombinacion;
-            
-            DROP TABLE #TempDias;
-            DROP TABLE #TempHorarios;
-            DROP TABLE #TempCombinacion;
-        END   
-        COMMIT TRANSACTION;
-        
-        -- Retornar información de la actividad creada
-        SELECT 
-            a.id_actividad,
-            a.nombre,
-            a.costo_mensual,
-            COUNT(adh.dia) as cantidad_horarios
-        FROM eSocios.Actividad a
-        LEFT JOIN eSocios.ActividadDiaHorario adh ON a.id_actividad = adh.id_actividad
-        WHERE a.id_actividad = @id_actividad
-        GROUP BY a.id_actividad, a.nombre, a.costo_mensual;
-        
-        PRINT 'Actividad creada exitosamente con ID: ' + CAST(@id_actividad as VARCHAR(10));
-        
+
+        INSERT INTO eSocios.Actividad (nombre, costo_mensual, vigencia)
+        VALUES (@nombre, @costo_mensual, @vigencia);
+		       
+		PRINT 'Actividad creada correctamente.';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-            
-        SET @error_message = ERROR_MESSAGE();
-        RAISERROR(@error_message, 16, 1);
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
     END CATCH
 END
 GO
 
-
-
-CREATE OR ALTER PROCEDURE eSocios.ModificarActividad
+-- modifica nombre, precio y vigencia de una actividad
+CREATE OR ALTER PROCEDURE eSocios.modificarActividad
     @id_actividad INT,
-    @nombre NVARCHAR(50) = NULL,
-    @costo_mensual DECIMAL(10,2) = NULL,
-    @dias NVARCHAR(200) = NULL, -- Días separados por coma: 'lunes,miércoles,viernes'
-    @horarios NVARCHAR(200) = NULL, -- Horarios separados por coma: '09:00-10:00,18:00-19:00'
-    @reemplazar_horarios BIT = 0 -- 0 = mantener horarios existentes, 1 = reemplazar todos los horarios
+    @nombre NVARCHAR(50),
+    @costo_mensual DECIMAL(10,2),
+    @vigencia DATE
 AS
 BEGIN
     SET NOCOUNT ON;
-    
-    DECLARE @error_message NVARCHAR(500);
-    DECLARE @dia VARCHAR(20);
-    DECLARE @horario VARCHAR(20);
-    DECLARE @hora_inicio TIME;
-    DECLARE @hora_fin TIME;
-    DECLARE @pos INT;
-    DECLARE @nombre_actual NVARCHAR(50);
-    DECLARE @costo_actual DECIMAL(10,2);
-    
+
     BEGIN TRY
-        BEGIN TRANSACTION;
-        
-        -- Verificar que la actividad existe
-        IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
+		--verifica que la actividad existe
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Actividad 
+			WHERE id_actividad = @id_actividad
+        )
         BEGIN
-            RAISERROR('No existe una actividad con ID: %d', 16, 1, @id_actividad);
+            PRINT 'La actividad no existe';
             RETURN;
         END
-        
-        -- Obtener datos actuales
-        SELECT @nombre_actual = nombre, @costo_actual = costo_mensual
-        FROM eSocios.Actividad 
+
+		-- verifica que la vigencia sea una fecha futura
+        IF @vigencia <= CAST(GETDATE() AS DATE)
+        BEGIN
+            PRINT 'La vigencia debe ser una fecha futura';
+            RETURN;
+        END
+
+		--actualiza los datos
+        UPDATE eSocios.Actividad
+        SET nombre = @nombre,
+            costo_mensual = @costo_mensual,
+            vigencia = @vigencia
         WHERE id_actividad = @id_actividad;
-        
-        -- Si no se pasan parámetros para modificar, mostrar error
-        IF @nombre IS NULL AND @costo_mensual IS NULL AND @dias IS NULL AND @horarios IS NULL
-        BEGIN
-            RAISERROR('Debe especificar al menos un campo para modificar', 16, 1);
-            RETURN;
-        END
-        
-        -- Validar nombre si se proporciona
-        IF @nombre IS NOT NULL
-        BEGIN
-            IF TRIM(@nombre) = ''
-            BEGIN
-                RAISERROR('El nombre de la actividad no puede estar vacío', 16, 1);
-                RETURN;
-            END
-            
-            -- Verificar que no exista otra actividad con el mismo nombre
-            IF EXISTS (SELECT 1 FROM eSocios.Actividad WHERE nombre = @nombre AND id_actividad != @id_actividad)
-            BEGIN
-                RAISERROR('Ya existe otra actividad con el nombre: %s', 16, 1, @nombre);
-                RETURN;
-            END
-        END
-        
-        -- Validar costo si se proporciona
-        IF @costo_mensual IS NOT NULL AND @costo_mensual < 0
-        BEGIN
-            RAISERROR('El costo mensual debe ser mayor o igual a 0', 16, 1);
-            RETURN;
-        END
-        
-        -- Validar que si se pasan días también se pasen horarios y viceversa
-        IF (@dias IS NOT NULL AND @horarios IS NULL) OR (@dias IS NULL AND @horarios IS NOT NULL)
-        BEGIN
-            RAISERROR('Si especifica días debe especificar horarios y viceversa', 16, 1);
-            RETURN;
-        END
-        
-        -- Actualizar datos básicos de la actividad
-        UPDATE eSocios.Actividad 
-        SET 
-            nombre = ISNULL(@nombre, nombre),
-            costo_mensual = ISNULL(@costo_mensual, costo_mensual)
-        WHERE id_actividad = @id_actividad;
-        
-        -- Procesar horarios si se proporcionaron
-        IF @dias IS NOT NULL AND @horarios IS NOT NULL
-        BEGIN
-            -- Si se debe reemplazar todos los horarios, eliminar los existentes
-            IF @reemplazar_horarios = 1
-            BEGIN
-                DELETE FROM eSocios.ActividadDiaHorario WHERE id_actividad = @id_actividad;
-            END
-            
-            -- Crear tablas temporales
-            CREATE TABLE #TempDias (dia VARCHAR(20));
-            CREATE TABLE #TempHorarios (hora_inicio TIME, hora_fin TIME);
-            CREATE TABLE #TempCombinacion (dia VARCHAR(20), hora_inicio TIME, hora_fin TIME);
-            
-            -- Procesar días (separados por coma)
-            DECLARE @dias_temp NVARCHAR(200) = @dias + ',';
-            WHILE CHARINDEX(',', @dias_temp) > 0
-            BEGIN
-                SET @pos = CHARINDEX(',', @dias_temp);
-                SET @dia = LTRIM(RTRIM(SUBSTRING(@dias_temp, 1, @pos - 1)));
-                
-                -- Validar día
-                IF @dia NOT IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
-                BEGIN
-                    RAISERROR('Día inválido: %s. Debe ser: lunes, martes, miércoles, jueves, viernes, sábado, domingo', 16, 1, @dia);
-                    RETURN;
-                END
-                
-                INSERT INTO #TempDias (dia) VALUES (@dia);
-                SET @dias_temp = SUBSTRING(@dias_temp, @pos + 1, LEN(@dias_temp));
-            END
-            
-            -- Procesar horarios (formato: '09:00-10:00,18:00-19:00')
-            DECLARE @horarios_temp NVARCHAR(200) = @horarios + ',';
-            WHILE CHARINDEX(',', @horarios_temp) > 0
-            BEGIN
-                SET @pos = CHARINDEX(',', @horarios_temp);
-                SET @horario = LTRIM(RTRIM(SUBSTRING(@horarios_temp, 1, @pos - 1)));
-                
-                -- Validar formato horario (debe contener guión)
-                IF CHARINDEX('-', @horario) = 0
-                BEGIN
-                    RAISERROR('Formato de horario inválido: %s. Use formato HH:MM-HH:MM', 16, 1, @horario);
-                    RETURN;
-                END
-                
-                -- Extraer hora inicio y fin
-                SET @hora_inicio = CAST(SUBSTRING(@horario, 1, CHARINDEX('-', @horario) - 1) AS TIME);
-                SET @hora_fin = CAST(SUBSTRING(@horario, CHARINDEX('-', @horario) + 1, LEN(@horario)) AS TIME);
-                
-                -- Validar que hora inicio < hora fin
-                IF @hora_inicio >= @hora_fin
-                BEGIN
-                    RAISERROR('La hora de inicio debe ser menor que la hora de fin: %s', 16, 1, @horario);
-                    RETURN;
-                END
-                
-                INSERT INTO #TempHorarios (hora_inicio, hora_fin) VALUES (@hora_inicio, @hora_fin);
-                SET @horarios_temp = SUBSTRING(@horarios_temp, @pos + 1, LEN(@horarios_temp));
-            END
-            
-            -- Crear todas las combinaciones día-horario
-            INSERT INTO #TempCombinacion (dia, hora_inicio, hora_fin)
-            SELECT d.dia, h.hora_inicio, h.hora_fin
-            FROM #TempDias d
-            CROSS JOIN #TempHorarios h;
-            
-            -- Verificar solapamientos con horarios existentes (si no se reemplazan)
-            IF @reemplazar_horarios = 0
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM #TempCombinacion tc
-                    WHERE EXISTS (
-                        SELECT 1 FROM eSocios.ActividadDiaHorario adh
-                        WHERE adh.id_actividad = @id_actividad
-                            AND adh.dia = tc.dia
-                            AND (tc.hora_inicio < adh.hora_fin AND tc.hora_fin > adh.hora_inicio)
-                    )
-                )
-                BEGIN
-                    RAISERROR('Los nuevos horarios se solapan con horarios existentes', 16, 1);
-                    RETURN;
-                END
-            END
-            
-            -- Verificar solapamientos entre los nuevos horarios
-            IF EXISTS (
-                SELECT dia 
-                FROM #TempCombinacion t1
-                WHERE EXISTS (
-                    SELECT 1 FROM #TempCombinacion t2 
-                    WHERE t1.dia = t2.dia 
-                        AND t1.hora_inicio != t2.hora_inicio
-                        AND (t1.hora_inicio < t2.hora_fin AND t1.hora_fin > t2.hora_inicio)
-                )
-            )
-            BEGIN
-                RAISERROR('Hay horarios que se solapan en el mismo día', 16, 1);
-                RETURN;
-            END
-            
-            -- Insertar los nuevos horarios (evitar duplicados si no se reemplazaron)
-            INSERT INTO eSocios.ActividadDiaHorario (id_actividad, dia, hora_inicio, hora_fin)
-            SELECT @id_actividad, tc.dia, tc.hora_inicio, tc.hora_fin
-            FROM #TempCombinacion tc
-            WHERE NOT EXISTS (
-                SELECT 1 FROM eSocios.ActividadDiaHorario adh
-                WHERE adh.id_actividad = @id_actividad
-                    AND adh.dia = tc.dia
-                    AND adh.hora_inicio = tc.hora_inicio
-                    AND adh.hora_fin = tc.hora_fin
-            );
-            
-            DROP TABLE #TempDias;
-            DROP TABLE #TempHorarios;
-            DROP TABLE #TempCombinacion;
-        END
-        
-        COMMIT TRANSACTION;
-        
-        -- Retornar información de la actividad modificada
-        SELECT 
-            a.id_actividad,
-            a.nombre,
-            a.costo_mensual,
-            COUNT(adh.dia) as cantidad_horarios,
-            CASE 
-                WHEN @nombre IS NOT NULL AND @nombre != @nombre_actual THEN 'Nombre modificado'
-                ELSE 'Nombre sin cambios'
-            END as cambio_nombre,
-            CASE 
-                WHEN @costo_mensual IS NOT NULL AND @costo_mensual != @costo_actual THEN 'Costo modificado'
-                ELSE 'Costo sin cambios'
-            END as cambio_costo,
-            CASE 
-                WHEN @dias IS NOT NULL AND @horarios IS NOT NULL THEN 
-                    CASE WHEN @reemplazar_horarios = 1 THEN 'Horarios reemplazados' ELSE 'Horarios agregados' END
-                ELSE 'Horarios sin cambios'
-            END as cambio_horarios
-        FROM eSocios.Actividad a
-        LEFT JOIN eSocios.ActividadDiaHorario adh ON a.id_actividad = adh.id_actividad
-        WHERE a.id_actividad = @id_actividad
-        GROUP BY a.id_actividad, a.nombre, a.costo_mensual;
-        
-        PRINT 'Actividad modificada exitosamente';
-        
+		PRINT 'Actividad modificada correctamente.';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-            
-        SET @error_message = ERROR_MESSAGE();
-        RAISERROR(@error_message, 16, 1);
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+-- elimina una actividad
+CREATE OR ALTER PROCEDURE eSocios.eliminarActividad
+    @id_actividad INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- verifica existencia de la actividad
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Actividad 
+			WHERE id_actividad = @id_actividad
+        )
+        BEGIN
+            PRINT 'La actividad no existe';
+            RETURN;
+        END
+
+        -- verifica si hay socios inscriptos
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.Realiza 
+			WHERE id_actividad = @id_actividad
+        )
+        BEGIN
+            PRINT 'No se puede eliminar la actividad porque hay socios inscriptos';
+            RETURN;
+        END
+
+        -- verifica si hay presentismo cargado
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.Presentismo 
+			WHERE id_actividad = @id_actividad
+        )
+        BEGIN
+            PRINT 'No se puede eliminar la actividad porque hay registros de presentismo';
+            RETURN;
+        END
+
+        -- verifica si tiene horarios asignados
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.ActividadDiaHorario 
+			WHERE id_actividad = @id_actividad
+        )
+        BEGIN
+            PRINT 'No se puede eliminar la actividad porque tiene horarios asignados';
+            RETURN;
+        END
+
+        -- si paso todos los chequeos, elimino la actividad
+        DELETE FROM eSocios.Actividad
+        WHERE id_actividad = @id_actividad;
+		PRINT 'La actividad fue eliminada correctamente';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+-- establece horarios para una actividad
+CREATE OR ALTER PROCEDURE eSocios.agregarHorarioActividad
+    @id_actividad INT,
+    @dia VARCHAR(20),
+    @hora_inicio TIME,
+    @hora_fin TIME
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- valida existencia de la actividad
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Actividad 
+			WHERE id_actividad = @id_actividad
+        )
+        BEGIN
+            PRINT 'La actividad no existe';
+            RETURN;
+        END
+
+        -- valida dia
+        IF @dia NOT IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
+        BEGIN
+            PRINT 'El día ingresado no es válido';
+            RETURN;
+        END
+
+        -- valida duplicado
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.ActividadDiaHorario
+            WHERE id_actividad = @id_actividad AND dia = @dia AND hora_inicio = @hora_inicio
+        )
+        BEGIN
+            PRINT 'Ese horario ya está asignado a la actividad';
+            RETURN;
+        END
+		--inserta
+        INSERT INTO eSocios.ActividadDiaHorario (id_actividad, dia, hora_inicio, hora_fin)
+        VALUES (@id_actividad, @dia, @hora_inicio, @hora_fin);
+		PRINT 'Horarios agregados correctamente';
+
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+CREATE OR ALTER PROCEDURE eSocios.eliminarHorarioActividad
+    @id_actividad INT,
+    @dia VARCHAR(20),
+    @hora_inicio TIME
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- valida existencia de la actividad
+        IF NOT EXISTS (
+            SELECT 1 FROM eSocios.ActividadDiaHorario
+            WHERE id_actividad = @id_actividad AND dia = @dia AND hora_inicio = @hora_inicio
+        )
+        BEGIN
+            RAISERROR('El horario no existe para esa actividad', 16, 1);
+            RETURN;
+        END
+
+        -- valida dia
+        IF @dia NOT IN ('lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo')
+        BEGIN
+            RAISERROR('El día ingresado no es válido', 16, 1);
+            RETURN;
+        END
+
+		--borra
+        DELETE FROM eSocios.ActividadDiaHorario
+        WHERE id_actividad = @id_actividad AND dia = @dia AND hora_inicio = @hora_inicio;
+		PRINT 'Horarios eliminados correctamente';
+
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
     END CATCH
 END
 GO
 
 
 
-CREATE OR ALTER PROCEDURE eSocios.EliminarActividad
-    @id_actividad INT = NULL,
-    @nombre NVARCHAR(50) = NULL
+--verifica que exista un socio con el ID dado y luego de eso le asigna la actividad indicada por ID en la tabla Realiza
+CREATE OR ALTER PROCEDURE eSocios.inscribirActividad
+    @id_socio VARCHAR(20),
+    @id_actividad INT
 AS
 BEGIN
     SET NOCOUNT ON;
-    
-    DECLARE @error_message NVARCHAR(500);
-    DECLARE @nombre_actividad NVARCHAR(50);
-    DECLARE @cantidad_horarios INT;
-    DECLARE @costo_actividad DECIMAL(10,2);
-    
+
     BEGIN TRY
-        BEGIN TRANSACTION;
-        
-        -- Validar que se proporcione al menos un parámetro de búsqueda
-        IF @id_actividad IS NULL AND @nombre IS NULL
+        -- valida existencia de socio
+        IF NOT EXISTS 
+		(
+			SELECT 1 FROM eSocios.Socio 
+			WHERE id_socio = @id_socio AND activo = 1
+		)
         BEGIN
-            RAISERROR('Debe especificar el ID o el nombre de la actividad a eliminar', 16, 1);
+            PRINT 'El socio no existe o está inactivo';
             RETURN;
         END
-        
-        -- Si se proporciona nombre, buscar el ID
-        IF @nombre IS NOT NULL AND @id_actividad IS NULL
+        -- valida existencia de actividad
+        IF NOT EXISTS 
+		(
+			SELECT 1 FROM eSocios.Actividad 
+			WHERE id_actividad = @id_actividad
+		)
         BEGIN
-            SELECT @id_actividad = id_actividad 
-            FROM eSocios.Actividad 
-            WHERE nombre = @nombre;
-            
-            IF @id_actividad IS NULL
-            BEGIN
-                RAISERROR('No se encontró una actividad con el nombre: %s', 16, 1, @nombre);
-                RETURN;
-            END
-        END
-        
-        -- Verificar que la actividad existe
-        IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
-        BEGIN
-            RAISERROR('No existe una actividad con ID: %d', 16, 1, @id_actividad);
+            PRINT 'La actividad no existe';
             RETURN;
         END
-        
-        -- Obtener información de la actividad antes de eliminarla
-        SELECT 
-            @nombre_actividad = nombre,
-            @costo_actividad = costo_mensual
-        FROM eSocios.Actividad 
-        WHERE id_actividad = @id_actividad;
-        
-        -- Contar horarios asociados
-        SELECT @cantidad_horarios = COUNT(*)
-        FROM eSocios.ActividadDiaHorario 
-        WHERE id_actividad = @id_actividad;
-        
-        -- Verificar si hay dependencias (esto sería útil si tienes otras tablas relacionadas)
-        -- Por ejemplo, si tienes una tabla de inscripciones:
-        /*
-        IF EXISTS (SELECT 1 FROM eSocios.Inscripciones WHERE id_actividad = @id_actividad)
+
+        -- verifica que no este inscripto
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.Realiza
+            WHERE socio = @id_socio AND id_actividad = @id_actividad
+        )
         BEGIN
-            RAISERROR('No se puede eliminar la actividad porque tiene inscripciones asociadas', 16, 1);
+            PRINT 'El socio ya está inscripto en esa actividad';
             RETURN;
         END
-        */
-        
-        -- Eliminar horarios primero (por la foreign key)
-        DELETE FROM eSocios.ActividadDiaHorario 
-        WHERE id_actividad = @id_actividad;
-        
-        -- Eliminar la actividad
-        DELETE FROM eSocios.Actividad 
-        WHERE id_actividad = @id_actividad;
-        
-        COMMIT TRANSACTION;
-        
-        -- Mostrar confirmación de eliminación
-        SELECT 
-            'ACTIVIDAD ELIMINADA EXITOSAMENTE' as Resultado,
-            @id_actividad as ID_Eliminado,
-            @nombre_actividad as Nombre_Eliminado,
-            @costo_actividad as Costo_Eliminado,
-            @cantidad_horarios as Horarios_Eliminados,
-            GETDATE() as Fecha_Eliminacion;
-        
-        PRINT 'Actividad "' + @nombre_actividad + '" eliminada exitosamente con ' + CAST(@cantidad_horarios as VARCHAR(10)) + ' horarios asociados';
-        
+
+        INSERT INTO eSocios.Realiza (socio, id_actividad)
+        VALUES (@id_socio, @id_actividad);
+
+		PRINT 'Socio inscrito correctamente';
+
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-            
-        SET @error_message = ERROR_MESSAGE();
-        RAISERROR(@error_message, 16, 1);
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
     END CATCH
 END
 GO
 
 -- elimina a un socio de una actividad
-CREATE OR ALTER PROCEDURE eSocios.DesinscribirActividad
-		@id_socio INT,
-		@id_actividad INT
-AS
-BEGIN
-	SET NOCOUNT ON;
-    
-	BEGIN TRY
-		--Validar que el socio exista
-		IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
-			THROW 50001, 'El socio no existe.', 1;
-
-		--Validar que la actividad exista
-		IF NOT EXISTS (SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad)
-			THROW 50002, 'La actividad no existe.', 1;
-
-		--Valido que el socio esté efectivamente inscripto en la actividad
-		IF NOT EXISTS (SELECT 1 FROM eSocios.Realiza WHERE socio = @id_socio AND id_actividad = @id_actividad)
-			THROW 50003, 'El ID socio ingresado no está inscripto en esta actividad', 1;
-
-		--Eliminar la inscripcion
-		DELETE FROM eSocios.Realiza
-		WHERE socio = @id_socio AND id_actividad = @id_actividad;
-        
-		--Confirmacion
-		SELECT CONCAT('Socio ', @id_socio, ' desinscripto de la actividad ', @id_actividad, ' con éxito.') AS Resultado;
-
-	END TRY
-	BEGIN CATCH
-		DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-		THROW 50000, @ErrorMessage, 1;
-	END CATCH
-END;
-GO
-
-
--- crea un nuevo grupo familiar asignando un adulto responsable
--- verifica que el adulto no tenga ya un grupo familiar asignado
-CREATE OR ALTER PROCEDURE eSocios.CrearGrupoFamiliar
-    @id_adulto_responsable INT
+CREATE OR ALTER PROCEDURE eSocios.desinscribirActividad
+    @id_socio VARCHAR(20),
+    @id_actividad INT
 AS
 BEGIN
     SET NOCOUNT ON;
-    
+
     BEGIN TRY
-        -- verifica que el socio existe y es mayor de edad
-        DECLARE @id_categoria INT;
-        DECLARE @categoria_nombre VARCHAR(50);
-        
-        SELECT @id_categoria = id_categoria 
-        FROM eSocios.Socio 
-        WHERE id_socio = @id_adulto_responsable;
-        
-        IF @id_categoria IS NULL
-            THROW 50001, 'El adulto responsable especificado no existe', 1;
-            
-        SELECT @categoria_nombre = nombre 
-        FROM eSocios.Categoria 
-        WHERE id_categoria = @id_categoria;
-        
-        IF @categoria_nombre != 'Mayor'
-            THROW 50002, 'El adulto responsable debe ser mayor de edad', 1;
-            
-        -- verifica que el adulto no tenga ya un grupo familiar
-        IF EXISTS (
-            SELECT 1 
-            FROM eSocios.GrupoFamiliar 
-            WHERE id_adulto_responsable = @id_adulto_responsable
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Realiza
+            WHERE socio = @id_socio AND id_actividad = @id_actividad
         )
-            THROW 50003, 'El adulto ya es responsable de otro grupo familiar', 1;
-            
-     
-		--Verificar que no pertenezca ya a otro grupo (no puede ser miembro de un grupo y responsable de otro)
-		IF EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_adulto_responsable AND id_grupo_familiar IS NOT NULL)
-			THROW 50005, 'El socio ya pertenece a un grupo familiar.', 1;
+        BEGIN
+            PRINT 'El socio no existe o no está inscripto en esa actividad';
+            RETURN;
+        END
 
-        -- crea el grupo familiar con descuento por defecto del 15%
-        INSERT INTO eSocios.GrupoFamiliar (id_adulto_responsable, descuento)
-        VALUES ( @id_adulto_responsable, 15.00);
-        
-        -- obtiene el ID del grupo recién creado
-		DECLARE @id_grupo_familiar INT;
-        SET @id_grupo_familiar = SCOPE_IDENTITY();
-        
-        -- actualiza el socio para que pertenezca al grupo familiar
-        UPDATE eSocios.Socio
-        SET id_grupo_familiar = @id_grupo_familiar
-        WHERE id_socio = @id_adulto_responsable;
+        DELETE FROM eSocios.Realiza
+        WHERE socio = @id_socio AND id_actividad = @id_actividad;
 
-		PRINT 'Grupo familiar creado con éxito.';
-        
+		PRINT 'Socio dado de baja de actividad correctamente';
+
     END TRY
     BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW 50000, @ErrorMessage, 1;
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
     END CATCH
-END;
+END
 GO
-
-
--- agrega un miembro a un grupo familiar existente
--- verifica que el miembro no pertenezca ya a otro grupo
-CREATE OR ALTER PROCEDURE eSocios.AgregarMiembroAGrupoFamiliar
-    @id_grupo INT,
-    @id_socio INT
+-- registra presentismo de un socio a una actividad
+CREATE OR ALTER PROCEDURE eSocios.registrarPresentismo
+    @id_socio VARCHAR(20),
+    @id_actividad INT,
+    @fecha_asistencia DATE = NULL,
+    @asistencia VARCHAR(5),
+    @profesor VARCHAR(20)
 AS
 BEGIN
     SET NOCOUNT ON;
-    
+
     BEGIN TRY
-        -- verifica que el grupo existe
-        IF NOT EXISTS (
-            SELECT 1 
-            FROM eSocios.GrupoFamiliar 
-            WHERE id_grupo = @id_grupo
+        -- verifica que el socio exista
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio
         )
-            THROW 50001, 'El grupo familiar especificado no existe', 1;
-            
-        -- verifica que el socio existe
-        IF NOT EXISTS (
-            SELECT 1 
-            FROM eSocios.Socio 
-            WHERE id_socio = @id_socio
-        )
-            THROW 50002, 'El socio especificado no existe', 1;
-            
-        -- verifica que el socio no es ya el adulto responsable
-        DECLARE @id_adulto_responsable INT;
-        
-        SELECT @id_adulto_responsable = id_adulto_responsable
-        FROM eSocios.GrupoFamiliar
-        WHERE id_grupo = @id_grupo;
-        
-        IF @id_socio = @id_adulto_responsable
-            THROW 50003, 'El socio ya es el adulto responsable de este grupo', 1;
-            
-        -- verifica que el socio no pertenece ya a otro grupo
-        IF EXISTS (
-            SELECT 1 
-            FROM eSocios.Socio 
-            WHERE id_socio = @id_socio 
-            AND id_grupo_familiar IS NOT NULL
-            AND id_grupo_familiar != @id_grupo
-        )
-            THROW 50004, 'El socio ya pertenece a otro grupo familiar', 1;
-            
-        -- agrega el socio al grupo familiar
-        UPDATE eSocios.Socio
-        SET id_grupo_familiar = @id_grupo
-        WHERE id_socio = @id_socio;
-        
-    END TRY
-    BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW 50000, @ErrorMessage, 1;
-    END CATCH
-END;
+        BEGIN
+            PRINT 'Error: El socio especificado no existe.';
+            RETURN;
+        END
 
-GO
-
-
--- asigna tutor para socio menor
-CREATE OR ALTER PROCEDURE eSocios.AsignarTutor
-    @id_socio INT,
-    @nombre VARCHAR(50),
-    @apellido VARCHAR(50),
-    @email NVARCHAR(100),
-    @fecha_nac DATE,
-    @telefono VARCHAR(10),
-    @parentesco VARCHAR(20)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    
-    BEGIN TRY
-        -- valida que el socio existe y es menor de edad
-        DECLARE @id_categoria INT;
-        DECLARE @categoria_nombre VARCHAR(50);
-        DECLARE @edad INT;
-        
-        SELECT @id_categoria = id_categoria, @edad = DATEDIFF(YEAR, fecha_nac, GETDATE())
-        FROM eSocios.Socio
-        WHERE id_socio = @id_socio;
-        
-        IF @id_categoria IS NULL
-            THROW 50001, 'El socio especificado no existe', 1;
-            
-        SELECT @categoria_nombre = nombre 
-        FROM eSocios.Categoria 
-        WHERE id_categoria = @id_categoria;
-        
-        IF @categoria_nombre = 'Mayor' OR @edad >= 18
-            THROW 50002, 'Solo se pueden asignar tutores a socios menores de edad', 1;
-            
-        -- insertar tutor
-        INSERT INTO eSocios.Tutor (
-            id_socio, nombre, apellido, email, fecha_nac, telefono, parentesco
+        -- verifica que la actividad exista
+        IF NOT EXISTS 
+		(
+            SELECT 1 FROM eSocios.Actividad WHERE id_actividad = @id_actividad
         )
-        VALUES (
-            @id_socio, @nombre, @apellido, @email, @fecha_nac, @telefono, @parentesco
+        BEGIN
+            PRINT 'Error: La actividad especificada no existe.';
+            RETURN;
+        END
+
+        -- fecha por defecto
+        IF @fecha_asistencia IS NULL
+            SET @fecha_asistencia = CONVERT(DATE, GETDATE());
+
+        -- verifica si ya se registro asistencia para ese socio, actividad y fecha
+        IF EXISTS 
+		(
+            SELECT 1 FROM eSocios.Presentismo
+            WHERE id_socio = @id_socio AND id_actividad = @id_actividad AND fecha_asistencia = @fecha_asistencia
+        )
+        BEGIN
+            PRINT 'Advertencia: Ya existe un registro de presentismo para este socio, actividad y fecha.';
+            RETURN;
+        END
+
+        -- Inserta el registro
+        INSERT INTO eSocios.Presentismo 
+		(
+            id_socio, id_actividad, fecha_asistencia, asistencia, profesor
+        )
+        VALUES 
+		(
+            @id_socio, @id_actividad, @fecha_asistencia, @asistencia, @profesor
         );
-        
-        RETURN SCOPE_IDENTITY(); -- retorna el ID del nuevo tutor
+
+        PRINT 'Presentismo registrado correctamente.';
     END TRY
     BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW 50000, @ErrorMessage, 1;
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
     END CATCH
-END;
+END
 GO
 
 
--- asigna un tutor a un socio menor, tomando los datos de un socio existente
--- el socio tutor debe ser mayor de edad (categoria 'Mayor')
--- el socio al que se le asigna el tutor debe ser menor de edad (categoria 'Menor' o 'Cadete')
-CREATE OR ALTER PROCEDURE eSocios.AsignarTutorDesdeSocio
-    @id_socio_menor INT,
-    @id_socio_tutor INT,
-    @parentesco VARCHAR(20)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    
-    BEGIN TRY
-        -- verifica que el socio a tutelar existe y es menor
-        DECLARE @categoria_menor VARCHAR(50);
-        DECLARE @edad_menor INT;
-        
-        SELECT @categoria_menor = c.nombre, 
-               @edad_menor = DATEDIFF(YEAR, s.fecha_nac, GETDATE())
-        FROM eSocios.Socio s
-        JOIN eSocios.Categoria c ON s.id_categoria = c.id_categoria
-        WHERE s.id_socio = @id_socio_menor;
-        
-        IF @categoria_menor IS NULL
-            THROW 50001, 'El socio a tutelar no existe', 1;
-            
-        IF @categoria_menor = 'Mayor' OR @edad_menor >= 18
-            THROW 50002, 'Solo se pueden asignar tutores a socios menores de edad', 1;
-            
-        -- verifica que el socio tutor existe y es mayor
-        DECLARE @categoria_tutor VARCHAR(50);
-        DECLARE @nombre_tutor VARCHAR(50);
-        DECLARE @apellido_tutor VARCHAR(50);
-        DECLARE @email_tutor NVARCHAR(100);
-        DECLARE @fecha_nac_tutor DATE;
-        DECLARE @telefono_tutor BIGINT;
-        
-        SELECT @categoria_tutor = c.nombre,
-               @nombre_tutor = s.nombre,
-               @apellido_tutor = s.apellido,
-               @email_tutor = s.email,
-               @fecha_nac_tutor = s.fecha_nac,
-               @telefono_tutor = s.telefono
-        FROM eSocios.Socio s
-        JOIN eSocios.Categoria c ON s.id_categoria = c.id_categoria
-        WHERE s.id_socio = @id_socio_tutor;
-        
-        IF @categoria_tutor IS NULL
-            THROW 50003, 'El socio tutor no existe', 1;
-            
-        IF @categoria_tutor != 'Mayor'
-            THROW 50004, 'El tutor debe ser mayor de edad', 1;
-            
-        -- verifica que no sea ya tutor de este socio
-        IF EXISTS (
-            SELECT 1 
-            FROM eSocios.Tutor 
-            WHERE id_socio = @id_socio_menor 
-            AND nombre = @nombre_tutor 
-            AND apellido = @apellido_tutor
-        )
-            THROW 50005, 'Este socio ya es tutor del menor especificado', 1;
-            
-        -- inserta el tutor
-        INSERT INTO eSocios.Tutor (
-            id_socio,
-            nombre,
-            apellido,
-            email,
-            fecha_nac,
-            telefono,
-            parentesco
-        )
-        VALUES (
-            @id_socio_menor,
-            @nombre_tutor,
-            @apellido_tutor,
-            @email_tutor,
-            @fecha_nac_tutor,
-            @telefono_tutor,
-            @parentesco
-        );
-        
-        RETURN SCOPE_IDENTITY(); -- retorna el id del nuevo tutor
-    END TRY
-    BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        THROW 50000, @ErrorMessage, 1;
-    END CATCH
-END;
-GO
-
-
-CREATE OR ALTER PROCEDURE eSocios.ModificarTutor
-		@id_tutor INT,
-		@nombre VARCHAR(50),
-		@apellido VARCHAR(50),
-		@email NVARCHAR(100),
-		@fecha_nac DATE,
-		@telefono BIGINT,
-		@parentesco VARCHAR(20)
-	AS
-	BEGIN
-		SET NOCOUNT ON;
-
-		BEGIN TRY
-	-- Verificar que el tutor exista
-			IF NOT EXISTS (
-				SELECT 1 
-				FROM eSocios.Tutor 
-				WHERE id_tutor = @id_tutor
-			)
-			THROW 60001, 'El tutor especificado no existe', 1;
-
-	-- Verificar que no se repita el email con otro tutor
-			IF EXISTS (
-				SELECT 1 
-				FROM eSocios.Tutor 
-				WHERE email = @email AND id_tutor <> @id_tutor
-			)
-			THROW 60002, 'Ya existe otro tutor con ese email', 1;
-	-- Actualizar datos del tutor
-			UPDATE eSocios.Tutor
-			SET nombre = COALESCE(@nombre, nombre),
-				apellido = COALESCE(@apellido, apellido),
-				email = COALESCE (@email, email),
-				fecha_nac = COALESCE(@fecha_nac, fecha_nac),
-				telefono = COALESCE(@telefono, telefono),
-				parentesco = COALESCE(@parentesco, parentesco)
-			WHERE id_tutor = @id_tutor;
-
-			PRINT 'Tutor modificado con éxito.';
-
-		END TRY
-		BEGIN CATCH
-			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-			THROW 50000, @ErrorMessage, 1;
-		END CATCH
-	END;
-GO
-
-
-CREATE OR ALTER PROCEDURE eSocios.EliminarTutor
-		@id_tutor INT
-	AS
-	BEGIN
-		SET NOCOUNT ON;
-
-		BEGIN TRY
-	-- Verificar que el tutor exista
-			IF NOT EXISTS (
-				SELECT 1 
-				FROM eSocios.Tutor 
-				WHERE id_tutor = @id_tutor
-			)
-			THROW 60101, 'El tutor especificado no existe', 1;
-
-	-- Eliminar tutor
-			DELETE FROM eSocios.Tutor
-			WHERE id_tutor = @id_tutor;
-
-		END TRY
-		BEGIN CATCH
-			DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-			THROW 60100, @ErrorMessage, 1;
-		END CATCH
-	END;
-	GO
 
 
 -- SP para generar factura mensual con el total de actividades y membresia 
 CREATE OR ALTER PROCEDURE eCobros.generarFactura
-    @id_socio INT,
-    @periodo VARCHAR(20), -- formato: 'MM/YYYY'
+    @id_socio VARCHAR(20),
     @fecha_emision DATE = NULL
 AS
 BEGIN
@@ -1094,18 +1066,16 @@ BEGIN
         RETURN -1;
     END;
     
-    --obtiene el grupo y categoria
-    DECLARE @id_grupo_familiar INT, @id_categoria INT, @costo_membresia DECIMAL(10,2);
-    
+   -- obtiene la categoria del socio
+    DECLARE @id_categoria INT, @costo_membresia DECIMAL(10,2);
     SELECT 
-        @id_grupo_familiar = id_grupo_familiar,
         @id_categoria = id_categoria
     FROM eSocios.Socio
     WHERE id_socio = @id_socio;
-    
-    --valida que la categoria existe y tiene costo
-    SELECT @costo_membresia = costo_mensual 
-    FROM eSocios.Categoria 
+
+	-- valida que la categoria existe y tiene costo
+    SELECT @costo_membresia = costo_mensual
+    FROM eSocios.Categoria
     WHERE id_categoria = @id_categoria;
 
     IF @costo_membresia IS NULL
@@ -1113,8 +1083,7 @@ BEGIN
         PRINT CONCAT('Error: La categoría con ID ', @id_categoria, ' no existe o no tiene costo definido.');
         RETURN -1;
     END;
-    
-
+        
     DECLARE @id_factura INT;
     BEGIN TRY
         BEGIN TRANSACTION;
@@ -1127,41 +1096,41 @@ BEGIN
         DECLARE @fecha_venc_1 DATE = DATEADD(DAY, 5, @fecha_emision);
         DECLARE @fecha_venc_2 DATE = DATEADD(DAY, 5, @fecha_venc_1);
         
-        -- variables de calculo
+        -- calculo de descuentos
         DECLARE @total_membresias DECIMAL(10,2) = @costo_membresia;
         DECLARE @porcentaje_descuento_familiar DECIMAL(5,2) = 0;
         DECLARE @porcentaje_descuento_actividades DECIMAL(5,2) = 0;
         
-        -- aplica o no descuento familiar 
-        IF @id_grupo_familiar IS NOT NULL
+        -- verifica si tiene grupo familiar
+        IF EXISTS (SELECT 1 FROM eSocios.GrupoFamiliar WHERE id_socio = @id_socio)
             SELECT @porcentaje_descuento_familiar = ISNULL(descuento, 0)
             FROM eSocios.GrupoFamiliar
-            WHERE id_grupo = @id_grupo_familiar;
+            WHERE id_socio = @id_socio;
         
-        -- calcular total de actividades
+        -- total actividades
         DECLARE @total_actividades DECIMAL(10,2) = 0;
         SELECT @total_actividades = ISNULL(SUM(a.costo_mensual), 0)
         FROM eSocios.Realiza sa
         JOIN eSocios.Actividad a ON sa.id_actividad = a.id_actividad
         WHERE sa.socio = @id_socio;
-        
+
         -- descuento por multiples actividades
         IF (SELECT COUNT(*) FROM eSocios.Realiza WHERE socio = @id_socio) > 1
             SET @porcentaje_descuento_actividades = 10;
         
-        -- calcula total con descuentos
+        -- total con descuentos
         DECLARE @total_con_descuentos DECIMAL(10,2) = 
             @total_membresias * (1 - @porcentaje_descuento_familiar / 100) +
             @total_actividades * (1 - @porcentaje_descuento_actividades / 100);
         
         -- inserta factura
         INSERT INTO eCobros.Factura 
-		(
+        (
             id_socio, fecha_emision, fecha_venc_1, fecha_venc_2, 
             estado, total, recargo_venc, descuentos
         )
         VALUES 
-		(
+        (
             @id_socio, @fecha_emision, @fecha_venc_1, @fecha_venc_2, 
             'pendiente', @total_con_descuentos, 0, 
             @porcentaje_descuento_familiar + @porcentaje_descuento_actividades
@@ -1169,46 +1138,48 @@ BEGIN
         
         SET @id_factura = SCOPE_IDENTITY();
         
-        -- insertar item de membresia
+        -- nombre de la categoria para item de membresia
         DECLARE @nombre_categoria VARCHAR(50);
         SELECT @nombre_categoria = nombre
         FROM eSocios.Categoria
         WHERE id_categoria = @id_categoria;
         
-        INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
-        VALUES (
+        -- inserta item de membresia
+        INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto)
+        VALUES 
+		(
             @id_factura, 
             CONCAT('Membresía - ', @nombre_categoria), 
-            @costo_membresia, 
-            @periodo
+            @costo_membresia
         );
-        
-        -- insertar items por actividades
-        INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
+       
+        -- inserta items por actividades
+        INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto)
         SELECT 
             @id_factura, 
             a.nombre,      
-            a.costo_mensual, 
-            @periodo
+            a.costo_mensual
         FROM eSocios.Realiza sa
         JOIN eSocios.Actividad a ON sa.id_actividad = a.id_actividad
         WHERE sa.socio = @id_socio;
-        
+
         COMMIT TRANSACTION;
-		PRINT CONCAT('Factura generada correctamente con ID: ', @id_factura);
+
+        PRINT CONCAT('Factura generada correctamente con ID: ', @id_factura);
         RETURN @id_factura;
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
-        
-        THROW;
+
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        THROW 50000, @ErrorMessage, 1;
     END CATCH
 END;
 GO
 
--- procedimiento para aplicar recargo por segundo vencimiento
-CREATE OR ALTER PROCEDURE eCobros.aplicarRecargoSegundoVencimiento
+-- si se paso del primer vencimiento aplica recargo, si se paso del segundo vencimiento inhabilita al socio
+CREATE OR ALTER PROCEDURE eCobros.verificarVencimiento
     @id_factura INT
 AS
 BEGIN
@@ -1219,8 +1190,9 @@ BEGIN
         DECLARE @fecha_venc_2 DATE;
         DECLARE @estado VARCHAR(20);
         DECLARE @total_actual DECIMAL(10,2);
-        DECLARE @recargo_aplicado BIT = 0;
-        DECLARE @porcentaje_recargo DECIMAL(5,2) = 10;
+        DECLARE @id_socio VARCHAR(20);
+        DECLARE @porcentaje_recargo DECIMAL(5,2) = 10;--10% de recargo
+        DECLARE @recargo_ya_aplicado BIT = 0;
 
         -- verifica si la factura existe
         IF NOT EXISTS (SELECT 1 FROM eCobros.Factura WHERE id_factura = @id_factura)
@@ -1234,42 +1206,57 @@ BEGIN
             @fecha_venc_1 = fecha_venc_1,
             @fecha_venc_2 = fecha_venc_2,
             @estado = estado,
-            @total_actual = total
+            @total_actual = total,
+            @id_socio = id_socio
         FROM eCobros.Factura
         WHERE id_factura = @id_factura;
 
-        -- verifica si ya se aplico el recargo
-        IF EXISTS (
-            SELECT 1 
-            FROM eCobros.ItemFactura 
-            WHERE id_factura = @id_factura 
-              AND concepto = 'recargo por segundo vencimiento'
-        )
-        BEGIN
-            SET @recargo_aplicado = 1;
-            PRINT 'Ya se había aplicado el recargo para la factura ' + CAST(@id_factura AS VARCHAR) + '.';
-            RETURN;
-        END;
-
-        -- evalua condiciones de vencimiento
+        -- verifica estado de la factura
         IF @estado <> 'pendiente'
         BEGIN
             PRINT 'La factura ' + CAST(@id_factura AS VARCHAR) + ' no está pendiente.';
             RETURN;
         END;
 
-        IF GETDATE() <= @fecha_venc_1
-        BEGIN
-            PRINT 'La factura ' + CAST(@id_factura AS VARCHAR) + ' aún está en primer vencimiento.';
+        IF GETDATE() < @fecha_venc_1
+		BEGIN
+            PRINT 'La factura ' + CAST(@id_factura AS VARCHAR) + ' no está vencida.';
             RETURN;
         END;
-        
-        IF GETDATE() > @fecha_venc_1
-        BEGIN
-            -- aplica recargo del 10%
-            DECLARE @monto_recargo DECIMAL(10,2) = @total_actual * (@porcentaje_recargo / 100.0);
 
-            -- actualiza total y recargo en factura
+        -- verifica si ya se aplico el recargo
+        IF GETDATE() < @fecha_venc_2 AND EXISTS 
+		(
+            SELECT 1 
+            FROM eCobros.ItemFactura 
+            WHERE id_factura = @id_factura 
+              AND concepto = 'recargo por vencimiento'
+        )
+        BEGIN
+            SET @recargo_ya_aplicado = 1;
+            PRINT 'Ya se había aplicado el recargo para la factura ' + CAST(@id_factura AS VARCHAR) + '.';
+			RETURN
+        END;
+
+        -- si paso del segundo vencimiento
+        IF GETDATE() > @fecha_venc_2
+        BEGIN
+            -- inactiva al socio
+            UPDATE eSocios.Socio
+            SET activo = 0
+            WHERE id_socio = @id_socio;
+
+            PRINT 'La factura ' + CAST(@id_factura AS VARCHAR) + 
+                  ' ya superó el segundo vencimiento. El socio ' + @id_socio + ' fue marcado como inactivo.';
+            RETURN;
+        END;
+
+        -- si estamos entre vencimiento 1 y 2 Y aún no se aplico recargo
+        IF GETDATE() > @fecha_venc_1 AND GETDATE() <= @fecha_venc_2 AND @recargo_ya_aplicado = 0
+        BEGIN
+            DECLARE @monto_recargo DECIMAL(10,2) = ROUND(@total_actual * (@porcentaje_recargo / 100.0), 2);
+
+            -- actualiza factura
             UPDATE eCobros.Factura
             SET 
                 total = @total_actual + @monto_recargo,
@@ -1277,24 +1264,16 @@ BEGIN
             WHERE id_factura = @id_factura;
 
             -- inserta item de recargo
-            INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
-            VALUES (
+            INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto)
+            VALUES 
+			(
                 @id_factura, 
-                'recargo por segundo vencimiento', 
-                @monto_recargo, 
-                CONVERT(VARCHAR(7), GETDATE(), 111)
+                'recargo por vencimiento', 
+                @monto_recargo
             );
 
             PRINT 'Recargo aplicado correctamente a la factura ' + CAST(@id_factura AS VARCHAR) + 
                   '. Monto: $' + CAST(@monto_recargo AS VARCHAR);
-            RETURN;
-        END;
-
-        IF GETDATE() > @fecha_venc_2
-        BEGIN
-            PRINT 'La factura ' + CAST(@id_factura AS VARCHAR) + 
-                  ' ya superó el segundo vencimiento y se encuentra en mora. No se aplica recargo.';
-            RETURN;
         END;
     END TRY
     BEGIN CATCH
@@ -1303,7 +1282,6 @@ BEGIN
     END CATCH
 END;
 GO
-
 
 --borrado logico para factura
 CREATE OR ALTER PROCEDURE eCobros.anularFactura
@@ -1314,7 +1292,8 @@ BEGIN
 
 
     -- verificar que la factura exista y no esté anulada
-    IF NOT EXISTS (
+    IF NOT EXISTS 
+	(
         SELECT 1 
         FROM eCobros.Factura 
         WHERE id_factura = @id_factura AND estado <> 'anulada'
@@ -1329,216 +1308,199 @@ BEGIN
     SET estado = 'anulada'
     WHERE id_factura = @id_factura;
 
-    -- Confirmación
     PRINT 'Factura ' + CAST(@id_factura AS VARCHAR(10)) + ' anulada correctamente.';
 END;
 GO
 
 
+
 --registra una entrada a la pileta y se ascocia a una factura
-CREATE OR ALTER PROCEDURE eCobros.RegistrarEntradaPileta
-    @id_socio INT,
+CREATE OR ALTER PROCEDURE eCobros.registrarEntradaPileta
+    @id_socio VARCHAR(20),
     @fecha DATE = NULL,
-    @tipo VARCHAR(8), -- 'socio' o 'invitado'
-    @lluvia BIT = 0
+    @categoria VARCHAR(30), -- 'Adultos' o 'Menores de 12 años'
+    @tipo_usuario VARCHAR(20), -- 'Socios' o 'Invitados'
+    @modalidad VARCHAR(30) -- 'Valor del dia', 'Valor de temporada', 'Valor del Mes'
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Valida que el socio existe
-	IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
+    -- validaciones 
+    IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
     BEGIN
         PRINT 'Error: El socio especificado no existe.';
         RETURN;
     END
 
-    -- valida tipo de entrada
-    IF @tipo NOT IN ('socio', 'invitado')
-    BEGIN
-        PRINT 'Error: Tipo de entrada no válido. Debe ser "socio" o "invitado".';
-        RETURN;
-    END
-    
-    -- establece fecha por defecto (hoy)
     IF @fecha IS NULL
-		SET @fecha = CONVERT(DATE, GETDATE());
+        SET @fecha = CONVERT(DATE, GETDATE());
 
-
-    -- verifica morosidad 
-	IF EXISTS
+    -- verifica morosidad
+    IF EXISTS 
 	(
-		SELECT 1
+        SELECT 1
         FROM eCobros.Factura
-        WHERE id_socio = @id_socio
-          AND estado = 'pendiente'
-          AND fecha_venc_2 < @fecha
+        WHERE id_socio = @id_socio AND estado = 'pendiente' AND fecha_venc_2 < @fecha
     )
     BEGIN
         PRINT 'Error: El socio tiene cuotas impagas y no puede acceder a la pileta.';
         RETURN;
     END
 
-    -- determina monto según tipo y tarifas
-    DECLARE @monto DECIMAL(10,2);
-        
-    IF @tipo = 'socio'
-        SET @monto =  500.00 -- valor por defecto para socios
-    ELSE
-        SET @monto =  800.00 -- valor por defecto para invitados
+    -- obtiene precio vigente según categoría, tipo y modalidad
+    DECLARE @precio_base DECIMAL(10,2);
 
+    SELECT TOP 1 @precio_base = precio
+    FROM eCobros.PreciosAcceso
+    WHERE categoria = @categoria
+      AND tipo_usuario = @tipo_usuario
+      AND modalidad = @modalidad
+      AND activo = 1
+      AND vigencia_hasta >= @fecha
+    ORDER BY vigencia_hasta ASC;
 
-    BEGIN TRY
-        BEGIN TRANSACTION;
-  
-        -- crea factura si no existe una para hoy
-        DECLARE @id_factura INT;
-        DECLARE @id_item INT;
-        
-        -- busca factura existente para hoy
-        SELECT @id_factura = id_factura
-        FROM eCobros.Factura
-        WHERE id_socio = @id_socio 
-          AND CONVERT(DATE, fecha_emision) = @fecha
-          AND estado = 'pendiente';
-        
-        IF @id_factura IS NULL
-        BEGIN
-            -- crea nueva factura
-            INSERT INTO eCobros.Factura 
-			(
-                id_socio, fecha_emision, fecha_venc_1, fecha_venc_2, estado, total
-            )
-            VALUES 
-			(
-                @id_socio, @fecha, DATEADD(DAY, 5, @fecha), DATEADD(DAY, 10, @fecha), 'pendiente', 0
-            );
-            
-            SET @id_factura = SCOPE_IDENTITY();
-        END
-        
-        -- crea ítem en factura para la entrada
-        INSERT INTO eCobros.ItemFactura 
-		(
-            id_factura, concepto, monto, periodo
-        )
-        VALUES 
-		(
-            @id_factura, 'Entrada Pileta - ' + @tipo, @monto, FORMAT(@fecha, 'yyyyMM')
-        );
-        
-        SET @id_item = SCOPE_IDENTITY();
-        
-        -- actualiza total de la factura
-        UPDATE eCobros.Factura
-        SET total = total + @monto
-        WHERE id_factura = @id_factura;
-        
-        
-        -- aplica reembolso automático si hay lluvia
-		DECLARE @reembolso DECIMAL(10,2) = 0
-        IF @lluvia = 1
-        BEGIN
-            SET @reembolso = @monto * 0.6; -- 60% de reembolso
-            
-            -- crea ítem en factura para el reembolso
-            INSERT INTO eCobros.ItemFactura 
-			(
-                id_factura, concepto, monto, periodo
-            )
-            VALUES 
-			(
-                @id_factura, 'Reembolso Por Lluvia Entrada Pileta - ' + @tipo, -@reembolso, FORMAT(@fecha, 'yyyyMM')
-            );
-
-            -- resta el reembolso al total
-            UPDATE eCobros.Factura
-            SET total = total - @reembolso
-            WHERE id_factura = @id_factura;
-        END
-
-        -- registra la entrada a la pileta
-        INSERT INTO eCobros.EntradaPileta 
-		(
-            id_socio, id_item_factura, fecha, monto, tipo, lluvia
-        )
-        VALUES (
-            @id_socio, @id_item, @fecha, @monto - @reembolso, @tipo, @lluvia
-        );
-		
-        COMMIT TRANSACTION;
-        PRINT 'La entrada a la pileta se registró correctamente.';
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-
-        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
-    END CATCH
-END;
-GO
-
---reembolsa una entrada a la pileta
-CREATE OR ALTER PROCEDURE eCobros.AnularEntradaPileta
-    @id_entrada INT
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- Validar que la entrada exista 
-    IF NOT EXISTS 
-	(
-        SELECT 1 FROM eCobros.EntradaPileta
-        WHERE id_entrada = @id_entrada 
-    )
+    IF @precio_base IS NULL
     BEGIN
-        PRINT 'Error: La entrada no existe';
+        PRINT 'Error: No se encontró un precio válido para los parámetros indicados.';
         RETURN;
+    END
+
+    -- determina si hubo lluvia (solo aplica para modalidad 'Valor del dia')
+    DECLARE @reembolso DECIMAL(10,2) = 0;
+
+    IF @modalidad = 'Valor del dia'
+    BEGIN
+        IF EXISTS 
+		(
+            SELECT 1
+            FROM eSocios.datos_meteorologicos
+			WHERE CONVERT(DATE, fecha_hora) = @fecha
+				AND lluvia_mm > 0
+        )
+        BEGIN
+            SET @reembolso = @precio_base * 0.6;--reembolso del 60%
+        END
     END
 
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- Obtener datos de la entrada y factura relacionada
-        DECLARE 
-            @id_item INT,
-            @id_factura INT,
-            @monto DECIMAL(10,2),
-            @tipo VARCHAR(8),
-            @fecha DATE;
+        -- crea factura si no hay una abierta en la fecha
+        DECLARE @id_factura INT;
 
-		SELECT 
-            @id_item = ep.id_item_factura,
-            @monto  = ep.monto,
-            @tipo = ep.tipo,
-            @fecha = ep.fecha,
-            @id_factura = it.id_factura
-        FROM eCobros.ItemFactura it 
-        INNER JOIN eCobros.EntradaPileta ep ON ep.id_item_factura = it.id_item
-        WHERE ep.id_entrada = @id_entrada;
+        SELECT @id_factura = id_factura
+        FROM eCobros.Factura
+        WHERE id_socio = @id_socio
+          AND fecha_emision = @fecha
+          AND estado = 'pendiente';
 
-        -- inserta reembolso en factura
+        IF @id_factura IS NULL
+        BEGIN
+            INSERT INTO eCobros.Factura 
+			(
+                id_socio, fecha_emision, fecha_venc_1, fecha_venc_2, estado, total, recargo_venc, descuentos
+            )
+            VALUES 
+			(
+                @id_socio, @fecha, DATEADD(DAY,5,@fecha), DATEADD(DAY,10,@fecha), 'pendiente', 0, 0, 0
+            );
+
+            SET @id_factura = SCOPE_IDENTITY();
+        END
+
+        -- inserta ítem de acceso
         INSERT INTO eCobros.ItemFactura 
 		(
-            id_factura, concepto, monto, periodo
+            id_factura, concepto, monto
         )
         VALUES 
 		(
-            @id_factura, 'Reembolso Entrada Pileta - ' + @tipo, -@monto, FORMAT(@fecha, 'yyyyMM')
+            @id_factura, CONCAT('Entrada Pileta - ', @tipo_usuario, ' (', @modalidad, ')'), @precio_base
         );
 
-        -- Actualizar total factura restando monto
+        -- aplica reembolso si corresponde
+        IF @reembolso > 0
+        BEGIN
+            INSERT INTO eCobros.ItemFactura 
+			(
+                id_factura, concepto, monto
+            )
+            VALUES 
+			(
+                @id_factura, 'Reembolso por lluvia', -@reembolso
+            );
+        END
+
+        -- Actualiza total de factura
+        UPDATE eCobros.Factura
+        SET total = total + @precio_base - @reembolso
+        WHERE id_factura = @id_factura;
+
+        COMMIT TRANSACTION;
+        PRINT CONCAT('Entrada registrada. Total: $', FORMAT(@precio_base - @reembolso, 'N2'));
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END;
+GO
+--elimina el item de una factura
+CREATE OR ALTER PROCEDURE eCobros.eliminarItemFactura
+    @id_item INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- valida que el item existe
+        IF NOT EXISTS (SELECT 1 FROM eCobros.ItemFactura WHERE id_item = @id_item)
+        BEGIN
+            PRINT 'Error: El ítem especificado no existe.';
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+
+        -- obtiene datos del item y la factura asociada
+        DECLARE @id_factura INT;
+        DECLARE @monto DECIMAL(10,2);
+        DECLARE @estado_factura VARCHAR(20);
+
+        SELECT 
+            @id_factura = id_factura,
+            @monto = monto
+        FROM eCobros.ItemFactura
+        WHERE id_item = @id_item;
+
+        -- valida estado de la factura
+        SELECT @estado_factura = estado
+        FROM eCobros.Factura
+        WHERE id_factura = @id_factura;
+
+        IF @estado_factura IN ('pagada', 'anulada')
+        BEGIN
+            PRINT 'Error: No se puede eliminar un ítem de una factura pagada o anulada.';
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+
+        -- elimina el item
+        DELETE FROM eCobros.ItemFactura
+        WHERE id_item = @id_item;
+
+        -- ajusta el total de la factura
         UPDATE eCobros.Factura
         SET total = total - @monto
         WHERE id_factura = @id_factura;
 
         COMMIT TRANSACTION;
 
-        PRINT 'Entrada anulada y reembolso aplicado correctamente.';
+        PRINT 'Ítem eliminado correctamente y total de factura actualizado.';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
         PRINT 'Error inesperado: ' + ERROR_MESSAGE();
     END CATCH
 END;
@@ -1547,7 +1509,7 @@ GO
 
 
 --genera un pago asociado a una factura
-CREATE OR ALTER PROCEDURE eCobros.CargarPago
+CREATE OR ALTER PROCEDURE eCobros.cargarPago
     @id_factura INT,
     @medio_pago VARCHAR(50),
     @monto DECIMAL(10,2),
@@ -1557,34 +1519,31 @@ AS
 BEGIN
     SET NOCOUNT ON;
     
-    -- Variables para validaciones
     DECLARE @estado_factura VARCHAR(20);
     DECLARE @total_factura DECIMAL(10,2);
     DECLARE @total_pagado DECIMAL(10,2) = 0;
     DECLARE @fecha_pago DATE;
-	DECLARE @id_pago INT;
-    
-    -- Validar que la factura existe y obtener su estado y total
-    SELECT @estado_factura = estado, 
-            @total_factura = total
+    DECLARE @id_pago BIGINT;
+
+    -- valida que la factura existe
+    SELECT 
+        @estado_factura = estado, 
+        @total_factura = total
     FROM eCobros.Factura 
     WHERE id_factura = @id_factura;
-        
-    -- Si no se encontró la factura, @estado_factura será NULL
+    
     IF @estado_factura IS NULL
     BEGIN
         PRINT 'La factura especificada no existe.';
         RETURN;
     END
 
-    -- Validar que la factura no esté anulada
     IF @estado_factura = 'anulada'
     BEGIN
         PRINT 'No se puede registrar un pago para una factura anulada.';
         RETURN;
     END
 
-    -- Validar que la factura no esté ya completamente pagada
     IF @estado_factura = 'pagada'
     BEGIN
         PRINT 'La factura ya se encuentra completamente pagada.';
@@ -1592,53 +1551,42 @@ BEGIN
     END
 
     BEGIN TRY
-        BEGIN TRANSACTION
-        
-        -- Si no se proporciona fecha, usar la fecha actual
+        BEGIN TRANSACTION;
+
         IF @fecha IS NULL
             SET @fecha_pago = GETDATE();
         ELSE
             SET @fecha_pago = @fecha;
-  
-        -- Calcular el total ya pagado para esta factura
+
+        -- total pagado hasta ahora
         SELECT @total_pagado = ISNULL(SUM(monto), 0)
         FROM eCobros.Pago 
-        WHERE id_factura = @id_factura 
-          AND estado = 'completado';
-        
-        -- Validar que el monto del pago no exceda el saldo pendiente
-        IF (@total_pagado + @monto) > @total_factura
-        BEGIN
-            DECLARE @saldo_pendiente DECIMAL(10,2) = @total_factura - @total_pagado;
-            DECLARE @mensaje_error VARCHAR(200) = 
-                'El monto del pago (' + CAST(@monto AS VARCHAR(20)) + 
-                ') excede el saldo pendiente de la factura (' + 
-                CAST(@saldo_pendiente AS VARCHAR(20)) + ').';
-            THROW 50001, @mensaje_error, 1;
-            RETURN;
-        END
-        
-        
-        -- Insertar el pago
+        WHERE id_factura = @id_factura AND estado = 'completado';
+
+		IF (@total_pagado + @monto) > @total_factura
+		BEGIN
+			DECLARE @saldo_pendiente DECIMAL(10,2) = @total_factura - @total_pagado;
+			PRINT 'Error: El monto del pago (' + CAST(@monto AS VARCHAR(20)) + 
+				  ') excede el saldo pendiente de la factura (' + 
+				  CAST(@saldo_pendiente AS VARCHAR(20)) + ').';
+			ROLLBACK TRANSACTION;
+			RETURN;
+		END
+
+        -- genera nuevo id_pago
+        SELECT @id_pago = ISNULL(MAX(id_pago), 0) + 1 FROM eCobros.Pago;
+
+        -- inserta el pago
         INSERT INTO eCobros.Pago 
 		(
-            id_factura, 
-            medio_pago, 
-            monto, 
-            fecha, 
-            estado, 
-            debito_auto
+            id_pago, id_factura, medio_pago, monto, fecha, estado, debito_auto
         )
-        VALUES (
-            @id_factura,
-            @medio_pago,
-            @monto,
-            @fecha_pago,
-            'completado',
-            @debito_auto
+        VALUES 
+		(
+            @id_pago, @id_factura, @medio_pago, @monto, @fecha_pago, 'completado', @debito_auto
         );
-        
-        -- Actualizar el estado de la factura si está completamente pagada
+
+        -- actualiza estado de factura si se paga completamente
         IF (@total_pagado + @monto) = @total_factura
         BEGIN
             UPDATE eCobros.Factura 
@@ -1646,16 +1594,14 @@ BEGIN
             WHERE id_factura = @id_factura;
         END
 
-        SET @id_pago = SCOPE_IDENTITY();
-
         COMMIT TRANSACTION;
-        
-        -- Mensaje de éxito
+
+        -- mensajes
         PRINT 'Pago registrado exitosamente.';
-        PRINT 'ID Pago: ' + CAST(@id_pago AS VARCHAR(10));
+        PRINT 'ID Pago: ' + CAST(@id_pago AS VARCHAR(20));
         PRINT 'Monto: $' + CAST(@monto AS VARCHAR(20));
         PRINT 'Medio de pago: ' + @medio_pago;
-        
+
         IF (@total_pagado + @monto) = @total_factura
             PRINT 'Factura marcada como PAGADA completamente.';
         ELSE
@@ -1663,25 +1609,20 @@ BEGIN
             DECLARE @saldo_restante DECIMAL(10,2) = @total_factura - (@total_pagado + @monto);
             PRINT 'Saldo restante: $' + CAST(@saldo_restante AS VARCHAR(20));
         END
-        
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
-        
-        -- Capturar y mostrar el error
+
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
-        DECLARE @ErrorState INT = ERROR_STATE();
-        
-        THROW 50000, @ErrorMessage, @ErrorState;
+        THROW 50000, @ErrorMessage, 1;
     END CATCH
-END
+END;
 GO
 
---bprrado logico de pago
-CREATE OR ALTER PROCEDURE eCobros.AnularPago 
-    @id_pago INT
+--borrado logico de pago
+CREATE OR ALTER PROCEDURE eCobros.anularPago 
+    @id_pago bigint
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -1689,34 +1630,38 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
         
-        -- Validar que el pago existe y está en estado 'completado'
-        IF NOT EXISTS (
+        -- valida que el pago existe y está en estado 'completado'
+        IF NOT EXISTS 
+        (
             SELECT 1 
             FROM eCobros.Pago 
             WHERE id_pago = @id_pago AND estado = 'completado'
         )
         BEGIN
-            RAISERROR('El pago no existe o no está en estado completado.', 16, 1);
+            PRINT 'Error: El pago no existe o no está en estado completado.';
+            ROLLBACK TRANSACTION;
             RETURN;
         END
         
-        -- Validar que no tenga reembolsos procesados
-        IF EXISTS (
+        -- valida que no tenga reembolsos procesados
+        IF EXISTS 
+        (
             SELECT 1 
             FROM eCobros.Reembolso 
             WHERE id_pago = @id_pago
         )
         BEGIN
-            RAISERROR('No se puede anular un pago que tiene reembolsos asociados.', 16, 1);
+            PRINT 'Error: No se puede anular un pago que tiene reembolsos asociados.';
+            ROLLBACK TRANSACTION;
             RETURN;
         END
         
-        -- Realizar el borrado lógico cambiando el estado
+        -- realiza el borrado lógico cambiando el estado
         UPDATE eCobros.Pago 
         SET estado = 'anulado'
         WHERE id_pago = @id_pago;
         
-        -- Obtener datos de la factura para actualizar su estado si es necesario
+        -- obtiene datos de la factura para actualizar su estado si es necesario
         DECLARE @id_factura INT;
         DECLARE @total_factura DECIMAL(10,2);
         DECLARE @total_pagado DECIMAL(10,2) = 0;
@@ -1729,51 +1674,44 @@ BEGIN
         FROM eCobros.Factura 
         WHERE id_factura = @id_factura;
         
-        -- Calcular el total pagado (excluyendo pagos anulados)
+        -- calcula el total pagado (excluyendo pagos anulados)
         SELECT @total_pagado = ISNULL(SUM(monto), 0)
         FROM eCobros.Pago 
         WHERE id_factura = @id_factura 
           AND estado = 'completado';
         
-        -- Actualizar estado de la factura
+        -- actualiza estado de la factura
         IF @total_pagado = 0
         BEGIN
-            -- Si no hay pagos, vuelve a pendiente
             UPDATE eCobros.Factura 
             SET estado = 'pendiente' 
             WHERE id_factura = @id_factura;
         END
         ELSE IF @total_pagado < @total_factura
         BEGIN
-            -- Si hay pagos parciales, vuelve a pendiente
             UPDATE eCobros.Factura 
             SET estado = 'pendiente' 
             WHERE id_factura = @id_factura;
         END
-        -- Si @total_pagado = @total_factura, mantiene estado 'pagada'
         
         COMMIT TRANSACTION;
         
         PRINT 'Pago anulado exitosamente.';
-        PRINT 'ID Pago: ' + CAST(@id_pago AS VARCHAR(10));
+        PRINT 'ID Pago: ' + CAST(@id_pago AS VARCHAR(20));
         
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
-        
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
-        DECLARE @ErrorState INT = ERROR_STATE();
-        
-        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
     END CATCH
 END
 GO
 
 --genera un reembolso para un pago
-CREATE OR ALTER PROCEDURE eCobros.GenerarReembolso
-    @id_pago INT,
+CREATE OR ALTER PROCEDURE eCobros.generarReembolso
+    @id_pago BIGINT,
     @monto DECIMAL(10,2),
     @motivo VARCHAR(100),
     @fecha DATE = NULL
@@ -1781,7 +1719,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Validaciones
+    -- validaciones
     DECLARE @estado_pago VARCHAR(20);
     DECLARE @monto_pago DECIMAL(10,2);
     DECLARE @total_reembolsado DECIMAL(10,2) = 0;
@@ -1790,7 +1728,7 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- Obtener estado y monto del pago
+        -- obtiene estado y monto del pago
         SELECT @estado_pago = estado, @monto_pago = monto
         FROM eCobros.Pago
         WHERE id_pago = @id_pago;
@@ -1809,7 +1747,7 @@ BEGIN
             RETURN;
         END
 
-        -- Calcular total ya reembolsado para el pago
+        -- calcula total ya reembolsado para el pago
         SELECT @total_reembolsado = ISNULL(SUM(monto), 0)
         FROM eCobros.Reembolso
         WHERE id_pago = @id_pago;
@@ -1822,17 +1760,17 @@ BEGIN
             RETURN;
         END
 
-        -- Fecha por defecto
+        -- fecha por defecto
         IF @fecha IS NULL
             SET @fecha_reembolso = CONVERT(DATE, GETDATE());
         ELSE
             SET @fecha_reembolso = @fecha;
 
-        -- Insertar el reembolso
+        -- inserta el reembolso
         INSERT INTO eCobros.Reembolso (id_pago, monto, motivo, fecha)
         VALUES (@id_pago, @monto, @motivo, @fecha_reembolso);
 
-        -- Determinar nuevo estado del pago
+        -- determina nuevo estado del pago
         IF (@total_reembolsado + @monto) = @monto_pago
         BEGIN
             -- Reembolso total
@@ -1862,9 +1800,8 @@ BEGIN
 END;
 GO
 
-
 --cancela un reembolso
-CREATE OR ALTER PROCEDURE eCobros.EliminarReembolso
+CREATE OR ALTER PROCEDURE eCobros.eliminarReembolso
     @id_reembolso INT
 AS
 BEGIN
@@ -1874,7 +1811,8 @@ BEGIN
         BEGIN TRANSACTION;
 
         -- Validar que el reembolso existe
-        IF NOT EXISTS (
+        IF NOT EXISTS 
+		(
             SELECT 1 
             FROM eCobros.Reembolso 
             WHERE id_reembolso = @id_reembolso
@@ -1885,29 +1823,29 @@ BEGIN
             RETURN;
         END
 
-        -- Obtener información del reembolso
-        DECLARE @id_pago INT;
+        -- obtiene informacion del reembolso
+        DECLARE @id_pago BIGINT;
         SELECT @id_pago = id_pago
         FROM eCobros.Reembolso
         WHERE id_reembolso = @id_reembolso;
 
-        -- Eliminar el reembolso
+        -- elimina el reembolso
         DELETE FROM eCobros.Reembolso 
         WHERE id_reembolso = @id_reembolso;
 
-        -- Recalcular los reembolsos activos
+        -- calcula los reembolsos activos
         DECLARE @total_reembolsado DECIMAL(10,2) = 0;
         SELECT @total_reembolsado = ISNULL(SUM(monto), 0)
         FROM eCobros.Reembolso
         WHERE id_pago = @id_pago;
 
-        -- Obtener el monto original del pago
+        -- obtiene el monto original del pago
         DECLARE @monto_pago DECIMAL(10,2);
         SELECT @monto_pago = monto 
         FROM eCobros.Pago 
         WHERE id_pago = @id_pago;
 
-        -- Ajustar estado del pago
+        -- ajusta estado del pago
         IF @total_reembolsado = 0
         BEGIN
             UPDATE eCobros.Pago 
@@ -1938,6 +1876,101 @@ BEGIN
     END CATCH
 END;
 GO
+
+
+CREATE OR ALTER PROCEDURE eCobros.reembolsoComoPagoACuenta
+    @id_pago BIGINT,
+    @monto DECIMAL(10,2),
+    @motivo VARCHAR(100),
+    @fecha DATE = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @estado_pago VARCHAR(20);
+    DECLARE @monto_pago DECIMAL(10,2);
+    DECLARE @total_reembolsado DECIMAL(10,2) = 0;
+    DECLARE @fecha_reembolso DATE;
+    DECLARE @id_socio VARCHAR(20);
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+      -- obtiene estado, monto y socio del pago
+        SELECT 
+            @estado_pago = p.estado,
+            @monto_pago = p.monto,
+            @id_socio = f.id_socio
+        FROM eCobros.Pago p
+        INNER JOIN eCobros.Factura f ON p.id_factura = f.id_factura
+        WHERE p.id_pago = @id_pago;
+
+		IF @estado_pago IS NULL
+        BEGIN
+            PRINT 'Error: El pago no existe.';
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+
+        IF @estado_pago = 'anulado'
+        BEGIN
+            PRINT 'Error: No se puede reembolsar un pago anulado.';
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+
+        SELECT @total_reembolsado = ISNULL(SUM(monto), 0)
+        FROM eCobros.Reembolso
+        WHERE id_pago = @id_pago;
+
+        IF (@total_reembolsado + @monto) > @monto_pago
+        BEGIN
+            PRINT 'Error: El reembolso excede el monto pagado.';
+            ROLLBACK TRANSACTION;
+            RETURN;
+        END
+
+        IF @fecha IS NULL
+            SET @fecha_reembolso = CONVERT(DATE, GETDATE());
+        ELSE
+            SET @fecha_reembolso = @fecha;
+
+        -- inserta en reembolso
+        INSERT INTO eCobros.Reembolso (id_pago, monto, motivo, fecha)
+        VALUES (@id_pago, @monto, @motivo, @fecha_reembolso);
+
+        -- registra o actualiza saldo del socio
+        IF EXISTS (SELECT 1 FROM eCobros.SaldoSocio WHERE id_socio = @id_socio)
+        BEGIN
+            UPDATE eCobros.SaldoSocio
+            SET saldo = saldo + @monto
+            WHERE id_socio = @id_socio;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO eCobros.SaldoSocio (id_socio, saldo)
+            VALUES (@id_socio, @monto);
+        END
+
+        -- actualiza estado del pago
+        IF (@total_reembolsado + @monto) = @monto_pago
+        BEGIN
+            UPDATE eCobros.Pago
+            SET estado = 'reembolsado'
+            WHERE id_pago = @id_pago;
+        END
+
+        COMMIT TRANSACTION;
+        PRINT 'Reembolso registrado como saldo a favor del socio.';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        PRINT 'Error inesperado: ' + ERROR_MESSAGE();
+    END CATCH
+END
+GO
+
+
 
 
 CREATE OR ALTER PROCEDURE eAdministrativos.CrearUsuario
