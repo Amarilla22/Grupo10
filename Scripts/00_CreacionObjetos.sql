@@ -42,7 +42,7 @@ BEGIN
 		id_categoria INT IDENTITY(1,1) PRIMARY KEY,
 		nombre VARCHAR(50) NOT NULL CHECK (nombre IN ('Menor', 'Cadete', 'Mayor')),
 		costo_mensual DECIMAL(10,2) NOT NULL CHECK (costo_mensual >= 0),
-		Vigencia date NOT NULL 
+		vigencia date NOT NULL 
 	);
 END
 GO

@@ -1972,7 +1972,7 @@ GO
 
 
 
-CREATE OR ALTER PROCEDURE eAdministrativos.CrearUsuario
+CREATE OR ALTER PROCEDURE eAdministrativos.crearUsuario
 	@rol VARCHAR(50),
 	@nombre_usuario NVARCHAR(50),
 	@clave NVARCHAR(50), --La clave se recibe en texto plano para el hash
@@ -2054,7 +2054,7 @@ BEGIN
 END;
 GO
 
-CREATE OR ALTER PROCEDURE eAdministrativos.ModificarUsuario
+CREATE OR ALTER PROCEDURE eAdministrativos.modificarUsuario
 	@id_usuario INT,
 	@nuevo_rol VARCHAR(50) = NULL, --opcional
 	@nuevo_nombre_usuario NVARCHAR(50) = NULL, --opcional
@@ -2184,7 +2184,7 @@ END;
 GO
 
 
-CREATE OR ALTER PROCEDURE eAdministrativos.EliminarUsuario
+CREATE OR ALTER PROCEDURE eAdministrativos.eliminarUsuario
 	@id_usuario INT
 AS
 BEGIN

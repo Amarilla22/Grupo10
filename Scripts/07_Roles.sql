@@ -65,8 +65,8 @@ GRANT SELECT ON eSocios.Categoria TO AdministrativoCobranza; -- Puede necesitar 
 GRANT SELECT ON eSocios.Actividad TO AdministrativoCobranza; -- Puede necesitar ver actividades para contexto
 
 --Permisos para ejecución sobre SPs 
-GRANT EXECUTE ON OBJECT::eCobros.CargarPago TO AdministrativoCobranza;
-GRANT EXECUTE ON OBJECT::eCobros.AnularPago TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eCobros.cargarPago TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eCobros.anularPago TO AdministrativoCobranza;
 GRANT EXECUTE ON OBJECT::eCobros.registrarEntradaPileta TO AdministrativoCobranza;
 GRANT EXECUTE ON OBJECT::eCobros.generarReembolso TO AdministrativoCobranza;
 GRANT EXECUTE ON OBJECT::eCobros.eliminarReembolso TO AdministrativoCobranza;
@@ -109,8 +109,8 @@ GRANT SELECT ON eSocios.Realiza TO AdministrativoFacturacion; -- Para obtener ac
 GRANT SELECT ON eSocios.Actividad TO AdministrativoFacturacion; -- Para obtener costos de actividades
 
 -- Permisos de ejecución sobre SPs
-GRANT EXECUTE ON OBJECT::eCobros.GenerarFactura TO AdministrativoFacturacion;
-GRANT EXECUTE ON OBJECT::eCobros.AnularFactura TO AdministrativoFacturacion;
+GRANT EXECUTE ON OBJECT::eCobros.generarFactura TO AdministrativoFacturacion;
+GRANT EXECUTE ON OBJECT::eCobros.anularFactura TO AdministrativoFacturacion;
 GRANT EXECUTE ON OBJECT::eCobros.eliminarItemFactura TO AdministrativoFacturacion;
 GO
 
