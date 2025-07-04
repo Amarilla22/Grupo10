@@ -2016,7 +2016,7 @@ BEGIN
 		--gestionará el hash interno para el LOGIN del servidor.
 		--Se establece la base de datos 'Com5600G10' como default para este login
 		DECLARE @sql_login NVARCHAR(MAX);
-		DECLARE @db_name SYSNAME = DB_NAME();
+		DECLARE @db_name SYSNAME = 'Com5600G10';
 		SET @sql_login = '
 			IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = ''' + @nombre_usuario + ''')
 			BEGIN
