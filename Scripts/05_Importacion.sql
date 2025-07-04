@@ -13,13 +13,13 @@ BEGIN
     BEGIN TRY
         -- Crear tabla temporal para importación
         CREATE TABLE #ImportacionCategorias 
-		(
+        (
             CategoriaSocio VARCHAR(50),
             ValorCuota DECIMAL(10,2),
             VigenteHasta DATE
         );
         
-        -- crear y ejecutar una consulta dinámica para importar desde excel
+        -- Crear y ejecutar una consulta dinámica para importar desde excel
         DECLARE @SQL NVARCHAR(MAX);
         SET @SQL = '
         INSERT INTO #ImportacionCategorias 
@@ -31,29 +31,53 @@ BEGIN
         
         EXEC sp_executesql @SQL;
         
-        -- insertar en la tabla
-        DECLARE @FilasInsertadas INT;
+        -- Variables para contadores
+        DECLARE @FilasInsertadas INT = 0;
+        DECLARE @FilasOmitidas INT = 0;
+        DECLARE @TotalFilas INT;
         
+        -- Contar total de filas válidas en la importación
+        SELECT @TotalFilas = COUNT(*)
+        FROM #ImportacionCategorias
+        WHERE CategoriaSocio IS NOT NULL;
+        
+        -- Insertar solo los registros que no existen
         INSERT INTO eSocios.Categoria (nombre, costo_mensual, Vigencia)
         SELECT 
-            CategoriaSocio,
-            ValorCuota,
-            VigenteHasta
-        FROM #ImportacionCategorias
-        WHERE CategoriaSocio IS NOT NULL; -- filtra filas vacías
+            ic.CategoriaSocio,
+            ic.ValorCuota,
+            ic.VigenteHasta
+        FROM #ImportacionCategorias ic
+        WHERE ic.CategoriaSocio IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1 
+            FROM eSocios.Categoria c 
+            WHERE c.nombre = ic.CategoriaSocio 
+            AND c.costo_mensual = ic.ValorCuota 
+            AND c.vigencia = ic.VigenteHasta
+        );
         
         SET @FilasInsertadas = @@ROWCOUNT;
+        SET @FilasOmitidas = @TotalFilas - @FilasInsertadas;
         
-        -- limpiar tabla temporal
+        -- Limpiar tabla temporal
         DROP TABLE #ImportacionCategorias;
         
+        -- Devolver resultado detallado
         SELECT 
             @FilasInsertadas as FilasInsertadas,
-            'Importación de categorías completada exitosamente' as Mensaje;
+            @FilasOmitidas as FilasOmitidas,
+            @TotalFilas as TotalFilasProcesadas,
+            CASE 
+                WHEN @FilasInsertadas > 0 AND @FilasOmitidas = 0 THEN 'Importación completada exitosamente'
+                WHEN @FilasInsertadas > 0 AND @FilasOmitidas > 0 THEN 'Importación completada con duplicados omitidos'
+                WHEN @FilasInsertadas = 0 AND @FilasOmitidas > 0 THEN 'No se insertaron registros - todos son duplicados'
+                ELSE 'No se encontraron registros válidos para importar'
+            END as Mensaje;
             
     END TRY
     BEGIN CATCH
-        --manejo de errores
+        -- Manejo de errores
         IF OBJECT_ID('tempdb..#ImportacionCategorias') IS NOT NULL
             DROP TABLE #ImportacionCategorias;
             
@@ -78,9 +102,9 @@ BEGIN
     SET NOCOUNT ON;
     
     BEGIN TRY
-        -- crear tabla temporal para importación
+        -- Crear tabla temporal para importación
         CREATE TABLE #ImportacionActividades 
-		(
+        (
             Col1 NVARCHAR(100),
             Col2 NVARCHAR(100),
             Col3 NVARCHAR(100), 
@@ -88,7 +112,7 @@ BEGIN
             Col5 NVARCHAR(100)
         );
         
-        -- importar datos desde excel
+        -- Importar datos desde excel
         DECLARE @SQL NVARCHAR(MAX);
         SET @SQL = '
         INSERT INTO #ImportacionActividades 
@@ -100,7 +124,7 @@ BEGIN
         
         EXEC sp_executesql @SQL;
         
-        IF @Debug = 1 --muestra datos importados
+        IF @Debug = 1 -- Muestra datos importados
         BEGIN
             SELECT 'Datos importados:' as Mensaje;
             SELECT * FROM #ImportacionActividades;
@@ -108,17 +132,21 @@ BEGIN
             SELECT 'Conteo de filas:' as Mensaje, COUNT(*) as Total FROM #ImportacionActividades;
         END;
         
-        
-        -- desactivar precios existentes
-        UPDATE eCobros.PreciosAcceso 
-        SET activo = 0 
-        WHERE activo = 1;
-        
+        -- Crear tabla temporal con los datos a insertar
+        CREATE TABLE #DatosAInsertar 
+        (
+            categoria VARCHAR(30),
+            tipo_usuario VARCHAR(20),
+            modalidad VARCHAR(30),
+            precio DECIMAL(10,2),
+            vigencia_hasta DATE,
+            activo BIT
+        );
         
         DECLARE @FechaVigencia DATE = '2025-02-28';
         
-        -- insertar todos los registros manualmente
-        INSERT INTO eCobros.PreciosAcceso (categoria, tipo_usuario, modalidad, precio, vigencia_hasta, activo)
+        -- Cargar datos en tabla temporal
+        INSERT INTO #DatosAInsertar (categoria, tipo_usuario, modalidad, precio, vigencia_hasta, activo)
         VALUES 
         -- Valor del día
         ('Adultos', 'Socios', 'Valor del dia', 25000.00, @FechaVigencia, 1),
@@ -134,28 +162,128 @@ BEGIN
         ('Adultos', 'Socios', 'Valor del Mes', 625000.00, @FechaVigencia, 1),
         ('Menores de 12 años', 'Socios', 'Valor del Mes', 375000.00, @FechaVigencia, 1);
         
+        -- Variables para contadores
+        DECLARE @FilasInsertadas INT = 0;
+        DECLARE @FilasOmitidas INT = 0;
+        DECLARE @TotalFilas INT;
+        DECLARE @FilasDesactivadas INT = 0;
+        DECLARE @FilasActualizadas INT = 0;
+        
+        -- Contar total de filas a procesar
+        SELECT @TotalFilas = COUNT(*) FROM #DatosAInsertar;
+        
+        -- MEJORA 1: Verificar si ya existen registros activos con la misma combinación
+        -- categoria + tipo_usuario + modalidad + vigencia_hasta
         IF @Debug = 1
         BEGIN
-            SELECT 'Registros insertados:' as Mensaje;
-            SELECT * FROM eSocios.PreciosAcceso WHERE activo = 1;
+            SELECT 'Registros activos que coinciden con los nuevos:' as Mensaje;
+            SELECT pa.*, 'EXISTENTE' as Estado
+            FROM eCobros.PreciosAcceso pa
+            INNER JOIN #DatosAInsertar di ON 
+                pa.categoria = di.categoria 
+                AND pa.tipo_usuario = di.tipo_usuario 
+                AND pa.modalidad = di.modalidad
+                AND pa.vigencia_hasta = di.vigencia_hasta
+            WHERE pa.activo = 1;
         END;
         
-        -- Limpiar tabla temporal
-        DROP TABLE #ImportacionActividades;
+        -- MEJORA 2: Estrategia mejorada para evitar duplicados
+        -- Opción A: Actualizar precios existentes en lugar de desactivar
+        UPDATE pa 
+        SET 
+            precio = di.precio,
+            fecha_creacion = GETDATE()
+        FROM eCobros.PreciosAcceso pa
+        INNER JOIN #DatosAInsertar di ON 
+            pa.categoria = di.categoria 
+            AND pa.tipo_usuario = di.tipo_usuario 
+            AND pa.modalidad = di.modalidad
+            AND pa.vigencia_hasta = di.vigencia_hasta
+        WHERE pa.activo = 1 
+        AND pa.precio != di.precio; -- Solo actualizar si el precio cambió
         
-        PRINT 'Importación completada exitosamente';
+        SET @FilasActualizadas = @@ROWCOUNT;
+        
+        -- MEJORA 3: Insertar solo registros completamente nuevos
+        -- (que no existan con la misma combinación categoria+tipo_usuario+modalidad+vigencia_hasta)
+        INSERT INTO eCobros.PreciosAcceso (categoria, tipo_usuario, modalidad, precio, vigencia_hasta, activo)
+        SELECT 
+            di.categoria,
+            di.tipo_usuario,
+            di.modalidad,
+            di.precio,
+            di.vigencia_hasta,
+            di.activo
+        FROM #DatosAInsertar di
+        WHERE NOT EXISTS (
+            SELECT 1 
+            FROM eCobros.PreciosAcceso pa 
+            WHERE pa.categoria = di.categoria 
+            AND pa.tipo_usuario = di.tipo_usuario 
+            AND pa.modalidad = di.modalidad 
+            AND pa.vigencia_hasta = di.vigencia_hasta 
+            AND pa.activo = 1  -- Solo verificar contra registros activos
+        );
+        
+        SET @FilasInsertadas = @@ROWCOUNT;
+        SET @FilasOmitidas = @TotalFilas - @FilasInsertadas - @FilasActualizadas;
+        
+        -- MEJORA 4: Verificación final de duplicados
+        IF @Debug = 1
+        BEGIN
+            SELECT 'Verificación de duplicados activos:' as Mensaje;
+            SELECT 
+                categoria, 
+                tipo_usuario, 
+                modalidad, 
+                vigencia_hasta, 
+                COUNT(*) as Cantidad
+            FROM eCobros.PreciosAcceso 
+            WHERE activo = 1
+            GROUP BY categoria, tipo_usuario, modalidad, vigencia_hasta
+            HAVING COUNT(*) > 1;
+            
+            SELECT 'Registros activos después de la importación:' as Mensaje;
+            SELECT * FROM eCobros.PreciosAcceso WHERE activo = 1
+            ORDER BY categoria, tipo_usuario, modalidad, vigencia_hasta;
+        END;
+        
+        -- Limpiar tablas temporales
+        DROP TABLE #ImportacionActividades;
+        DROP TABLE #DatosAInsertar;
+        
+        -- Devolver resultado detallado
+        SELECT 
+            @FilasInsertadas as FilasInsertadas,
+            @FilasActualizadas as FilasActualizadas,
+            @FilasOmitidas as FilasOmitidas,
+            @FilasDesactivadas as FilasDesactivadas,
+            @TotalFilas as TotalFilasProcesadas,
+            CASE 
+                WHEN @FilasInsertadas > 0 AND @FilasActualizadas = 0 AND @FilasOmitidas = 0 THEN 'Importación completada exitosamente - Solo inserciones'
+                WHEN @FilasInsertadas = 0 AND @FilasActualizadas > 0 AND @FilasOmitidas >= 0 THEN 'Importación completada exitosamente - Solo actualizaciones'
+                WHEN @FilasInsertadas > 0 AND @FilasActualizadas > 0 THEN 'Importación completada exitosamente - Inserciones y actualizaciones'
+                WHEN @FilasInsertadas = 0 AND @FilasActualizadas = 0 AND @FilasOmitidas > 0 THEN 'No se realizaron cambios - todos los registros ya existen'
+                ELSE 'No se encontraron registros válidos para importar'
+            END as Mensaje;
         
     END TRY
     BEGIN CATCH
-        -- manejo de errores
+        -- Manejo de errores
         IF OBJECT_ID('tempdb..#ImportacionActividades') IS NOT NULL
             DROP TABLE #ImportacionActividades;
+            
+        IF OBJECT_ID('tempdb..#DatosAInsertar') IS NOT NULL
+            DROP TABLE #DatosAInsertar;
             
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
         DECLARE @ErrorState INT = ERROR_STATE();
         
-        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+        SELECT 
+            ERROR_NUMBER() as ErrorNumero,
+            @ErrorMessage as ErrorMensaje,
+            'Error en la importación de precios de acceso' as Estado;
     END CATCH
 END; 
 GO
@@ -191,27 +319,56 @@ BEGIN
         
         EXEC sp_executesql @SQL;
         
-        -- insertar en la tabla definitiva
-		-- conteo
+        -- Insertar en la tabla definitiva SOLO registros que no existan
+        -- Evitar duplicados basándose en nombre, costo_mensual y vigencia
         DECLARE @FilasInsertadas INT;
         
         INSERT INTO eSocios.Actividad (nombre, costo_mensual, vigencia)
         SELECT 
-            Actividad,
-            ValorPorMes,
-            VigenteHasta
-        FROM #ImportacionActividades
-        WHERE Actividad IS NOT NULL; -- Filtrar filas vacías
+            i.Actividad,
+            i.ValorPorMes,
+            i.VigenteHasta
+        FROM #ImportacionActividades i
+        WHERE i.Actividad IS NOT NULL -- Filtrar filas vacías
+        AND NOT EXISTS (
+            SELECT 1 
+            FROM eSocios.Actividad a 
+            WHERE a.nombre = i.Actividad 
+            AND a.costo_mensual = i.ValorPorMes 
+            AND a.vigencia = i.VigenteHasta
+        );
         
         SET @FilasInsertadas = @@ROWCOUNT;
+        
+        -- Obtener registros duplicados para reporte
+        DECLARE @FilasDuplicadas INT;
+        SELECT @FilasDuplicadas = COUNT(*)
+        FROM #ImportacionActividades i
+        WHERE i.Actividad IS NOT NULL
+        AND EXISTS (
+            SELECT 1 
+            FROM eSocios.Actividad a 
+            WHERE a.nombre = i.Actividad 
+            AND a.costo_mensual = i.ValorPorMes 
+            AND a.vigencia = i.VigenteHasta
+        );
         
         -- Limpiar tabla temporal
         DROP TABLE #ImportacionActividades;
         
-        -- resultado
+        -- Resultado con información detallada
         SELECT 
             @FilasInsertadas as FilasInsertadas,
-            'Importación completada exitosamente' as Mensaje;
+            @FilasDuplicadas as FilasDuplicadas,
+            CASE 
+                WHEN @FilasInsertadas > 0 AND @FilasDuplicadas = 0 
+                    THEN 'Importación completada exitosamente'
+                WHEN @FilasInsertadas > 0 AND @FilasDuplicadas > 0 
+                    THEN 'Importación completada con duplicados omitidos'
+                WHEN @FilasInsertadas = 0 AND @FilasDuplicadas > 0 
+                    THEN 'No se insertaron registros'
+                ELSE 'No se encontraron registros válidos para importar'
+            END as Mensaje;
             
     END TRY
     BEGIN CATCH
@@ -722,6 +879,29 @@ BEGIN
             PRINT 'Se eliminaron ' + CAST(@RegistrosEliminados AS VARCHAR(10)) + ' registros por socios no encontrados en la base de datos';
         END
         
+        -- NUEVO: eliminar registros con id_pago duplicados que ya existen en la tabla de pagos
+        DELETE i FROM #ImportacionSocios i 
+        INNER JOIN eCobros.Pago p ON i.id_pago = p.id_pago;
+        
+        -- contar cuántos registros se eliminaron por ser duplicados
+        DECLARE @RegistrosDuplicados INT = @@ROWCOUNT;
+        IF @RegistrosDuplicados > 0
+        BEGIN
+            PRINT 'Se eliminaron ' + CAST(@RegistrosDuplicados AS VARCHAR(10)) + ' registros por tener id_pago duplicados';
+        END
+        
+        -- si no quedan registros para procesar, salir con mensaje
+        DECLARE @RegistrosParaProcesar INT;
+        SELECT @RegistrosParaProcesar = COUNT(*) FROM #ImportacionSocios;
+        
+        IF @RegistrosParaProcesar = 0
+        BEGIN
+            PRINT 'No hay registros válidos para procesar después de las validaciones';
+            DROP TABLE #ImportacionSocios;
+            COMMIT TRANSACTION;
+            RETURN;
+        END
+        
         -- crear facturas para cada pago (una x pago)
         INSERT INTO eCobros.Factura 
 		(
@@ -737,8 +917,8 @@ BEGIN
         SELECT DISTINCT
             i.id_socio,
             i.fecha as fecha_emision,
-            DATEADD(DAY, 5, i.fecha) as fecha_venc_1,  -- vencimiento a 30 días
-            DATEADD(DAY, 10, i.fecha) as fecha_venc_2,  -- segundo vencimiento a 60 días
+            DATEADD(DAY, 5, i.fecha) as fecha_venc_1,  -- vencimiento a 5 días
+            DATEADD(DAY, 10, i.fecha) as fecha_venc_2,  -- segundo vencimiento a 10 días
             'pagada' as estado,  -- ya tenemos el pago, entonces la factura está pagada
             i.valor as total,
             0 as recargo_venc,  -- sin recargo
@@ -770,7 +950,7 @@ BEGIN
             AND i.valor = f.total
             AND f.estado = 'pagada';
         
-        -- Insertar pagos
+        -- Insertar pagos SOLO si no existen duplicados
         INSERT INTO eCobros.Pago 
 		(
             id_pago,
@@ -798,14 +978,28 @@ BEGIN
             m.fecha,
             'completado' as estado,
             0 as debito_auto  -- asumimos que no es débito automático
-        FROM #MapeoFacturas m;
+        FROM #MapeoFacturas m
+        WHERE NOT EXISTS (
+            SELECT 1 FROM eCobros.Pago p 
+            WHERE p.id_pago = m.id_pago
+        );
+        
+        -- contar pagos insertados
+        DECLARE @PagosInsertados INT = @@ROWCOUNT;
         
         -- mostrar resumen de la importación
         SELECT 
-            COUNT(*) as TotalRegistrosProcesados,
+            @RegistrosParaProcesar as TotalRegistrosProcesados,
             COUNT(DISTINCT id_socio) as TotalSociosAfectados,
             SUM(valor) as MontoTotalImportado,
-            @RegistrosEliminados as RegistrosEliminadosPorSocioInexistente
+            @RegistrosEliminados as RegistrosEliminadosPorSocioInexistente,
+            @RegistrosDuplicados as RegistrosEliminadosPorDuplicados,
+            @PagosInsertados as PagosInsertados,
+            CASE 
+                WHEN @PagosInsertados > 0 THEN 'Importación completada exitosamente'
+                WHEN @RegistrosDuplicados > 0 THEN 'No se insertaron pagos - todos eran duplicados'
+                ELSE 'No se insertaron pagos - verificar datos'
+            END as Estado
         FROM #ImportacionSocios;
         
         -- limpiar tablas temporales
@@ -899,7 +1093,18 @@ BEGIN
           AND i.fecha_asistencia IS NOT NULL
           AND ISDATE(i.fecha_asistencia) = 1;
         
-        -- insertar datos válidos en la tabla final
+        -- NUEVO: Eliminar duplicados de la tabla temporal antes de insertar
+        -- Eliminar registros que ya existen en la tabla de presentismo
+        DELETE dp FROM #DatosProcesados dp
+        INNER JOIN eSocios.Presentismo p ON 
+            dp.id_socio = p.id_socio 
+            AND dp.id_actividad = p.id_actividad 
+            AND dp.fecha_asistencia = p.fecha_asistencia;
+        
+        -- Contar duplicados eliminados
+        DECLARE @DuplicadosEliminados INT = @@ROWCOUNT;
+        
+        -- insertar datos válidos en la tabla final (solo los no duplicados)
         INSERT INTO eSocios.Presentismo (id_socio, id_actividad, fecha_asistencia, asistencia, profesor)
         SELECT 
             id_socio,
@@ -908,17 +1113,35 @@ BEGIN
             asistencia,
             profesor
         FROM #DatosProcesados
-        WHERE fecha_asistencia IS NOT NULL;
+        WHERE fecha_asistencia IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1 FROM eSocios.Presentismo p 
+            WHERE p.id_socio = #DatosProcesados.id_socio 
+            AND p.id_actividad = #DatosProcesados.id_actividad 
+            AND p.fecha_asistencia = #DatosProcesados.fecha_asistencia
+        );
+        
+        -- Capturar filas insertadas DESPUÉS del INSERT
+        DECLARE @FilasInsertadas INT = @@ROWCOUNT;
         
         -- mostrar estadísticas de la importación
         DECLARE @TotalFilas INT = (SELECT COUNT(*) FROM #ImportacionActividades);
-        DECLARE @FilasInsertadas INT = (SELECT COUNT(*) FROM #DatosProcesados WHERE fecha_asistencia IS NOT NULL);
-        DECLARE @FilasRechazadas INT = @TotalFilas - @FilasInsertadas;
+        DECLARE @FilasProcesadasOriginales INT = (SELECT COUNT(*) FROM #DatosProcesados WHERE fecha_asistencia IS NOT NULL) + @DuplicadosEliminados;
+        DECLARE @FilasRechazadas INT = @TotalFilas - @FilasProcesadasOriginales;
         
         PRINT 'Importación completada:';
         PRINT 'Total de filas en Excel: ' + CAST(@TotalFilas AS VARCHAR(10));
         PRINT 'Filas insertadas: ' + CAST(@FilasInsertadas AS VARCHAR(10));
-        PRINT 'Filas rechazadas: ' + CAST(@FilasRechazadas AS VARCHAR(10));
+        PRINT 'Filas omitidas por duplicados: ' + CAST(@DuplicadosEliminados AS VARCHAR(10));
+        PRINT 'Filas rechazadas por errores: ' + CAST(@FilasRechazadas AS VARCHAR(10));
+        
+        -- Mostrar duplicados encontrados si los hay
+        IF @DuplicadosEliminados > 0
+        BEGIN
+            PRINT '';
+            PRINT 'Se encontraron ' + CAST(@DuplicadosEliminados AS VARCHAR(10)) + ' registros duplicados que fueron omitidos';
+            PRINT 'Los duplicados se basaron en: id_socio + id_actividad + fecha_asistencia';
+        END;
         
         -- mostrar filas rechazadas 
         IF @FilasRechazadas > 0
@@ -949,6 +1172,23 @@ BEGIN
             WHERE i.nro_socio IS NULL OR i.actividad IS NULL OR i.fecha_asistencia IS NULL;
         END;
         
+        -- NUEVO: Resumen final como mensaje
+        PRINT '';
+        PRINT '====== RESUMEN FINAL ======';
+        PRINT 'Estado: ' + CASE 
+            WHEN @FilasInsertadas > 0 AND @DuplicadosEliminados = 0 AND @FilasRechazadas = 0 
+                THEN 'Importación exitosa - Sin errores'
+            WHEN @FilasInsertadas > 0 AND (@DuplicadosEliminados > 0 OR @FilasRechazadas > 0)
+                THEN 'Importación completada con advertencias'
+            WHEN @FilasInsertadas = 0 AND @DuplicadosEliminados > 0 
+                THEN 'No se insertaron registros - Todos eran duplicados'
+            WHEN @FilasInsertadas = 0 AND @FilasRechazadas > 0 
+                THEN 'No se insertaron registros - Todos tenían errores'
+            ELSE 'Importación sin resultados'
+        END;
+        PRINT 'Filas válidas procesadas: ' + CAST((@FilasInsertadas + @DuplicadosEliminados) AS VARCHAR(10)) + ' de ' + CAST(@TotalFilas AS VARCHAR(10));
+        PRINT '=============================';
+        
     END TRY
     BEGIN CATCH
         PRINT 'Error durante la importación:';
@@ -958,8 +1198,10 @@ BEGIN
     END CATCH;
     
     -- Limpiar tablas temporales
-    DROP TABLE #ImportacionActividades;
-    DROP TABLE #DatosProcesados;
+    IF OBJECT_ID('tempdb..#ImportacionActividades') IS NOT NULL
+        DROP TABLE #ImportacionActividades;
+    IF OBJECT_ID('tempdb..#DatosProcesados') IS NOT NULL
+        DROP TABLE #DatosProcesados;
     
 END; 
 GO
@@ -1109,5 +1351,6 @@ END;
 GO
 
 
+EXEC eImportacion.ImportarDatosClima @RutaArchivo = 'S:\importacion\open-meteo-buenosaires_2024.csv', @NombreUbicacion = 'Buenos Aires';
 EXEC eImportacion.ImportarDatosClima @RutaArchivo = 'S:\importacion\open-meteo-buenosaires_2025.csv', @NombreUbicacion = 'Buenos Aires';
 
