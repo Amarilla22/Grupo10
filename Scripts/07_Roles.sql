@@ -12,8 +12,8 @@ Integrantes:
 */
 
 --Creacion de roles
-USE Com5600G10
-GO
+--USE Test
+--GO
 
 --Creacion de roles
 CREATE ROLE JefeTesoreria;
@@ -41,15 +41,12 @@ CREATE ROLE Vocales;
 GRANT SELECT ON SCHEMA::eCobros TO JefeTesoreria;
 GRANT SELECT ON SCHEMA::eSocios TO JefeTesoreria;
 GRANT SELECT ON SCHEMA::eAdministrativos TO JefeTesoreria;
---CUANDO SE REALICEN LOS REPORTES
---GRANT SELECT ON SCHEMA::eReportes TO JefeTesoreria;
+GRANT SELECT ON SCHEMA::eReportes TO JefeTesoreria;
+
+--Permisos para ejecución sobre SPs
+GRANT EXECUTE ON SCHEMA::eReportes TO JefeTesoreria;
 GO
 
-/*CUANDO SE HAGAN LOS SP DE REPORTES, EL JEFE DE TESORERIA SERÍA EL ENCARGADO DE TRABAJAR CON ESE SP. 
---GRANT EXECUTE ON OBJECT::eReportes.ReporteSociosMorosos TO JefeTesoreria;
-O sino mejor:
---GRANTEXECUTE ON SCHEMA::eReportes TO JefeTesoreria;
-*/
 
 -- ====================================================================
 --ROL: AdministrativoCobranza
@@ -62,7 +59,7 @@ GRANT SELECT ON eCobros.Factura TO AdministrativoCobranza;
 GRANT SELECT ON eCobros.ItemFactura TO AdministrativoCobranza;
 GRANT SELECT ON eCobros.Pago TO AdministrativoCobranza;
 GRANT SELECT ON eCobros.Reembolso TO AdministrativoCobranza;
-GRANT SELECT ON eCobros.EntradaPileta TO AdministrativoCobranza;
+GRANT SELECT ON eCobros.PreciosAcceso TO AdministrativoCobranza;
 GRANT SELECT ON eSocios.Socio TO AdministrativoCobranza; -- Necesita ver datos del socio
 GRANT SELECT ON eSocios.Categoria TO AdministrativoCobranza; -- Puede necesitar ver categorías para contexto
 GRANT SELECT ON eSocios.Actividad TO AdministrativoCobranza; -- Puede necesitar ver actividades para contexto
@@ -70,9 +67,15 @@ GRANT SELECT ON eSocios.Actividad TO AdministrativoCobranza; -- Puede necesitar 
 --Permisos para ejecución sobre SPs 
 GRANT EXECUTE ON OBJECT::eCobros.CargarPago TO AdministrativoCobranza;
 GRANT EXECUTE ON OBJECT::eCobros.AnularPago TO AdministrativoCobranza;
-GRANT EXECUTE ON OBJECT::eCobros.RegistrarEntradaPileta TO AdministrativoCobranza;
-GRANT EXECUTE ON OBJECT::eCobros.AnularEntradaPileta TO AdministrativoCobranza;
-GRANT EXECUTE ON OBJECT::eCobros.BorradoLogicoReembolso TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eCobros.registrarEntradaPileta TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eCobros.generarReembolso TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eCobros.eliminarReembolso TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eCobros.reembolsoComoPagoACuenta TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eImportacion.ImportarTarifasCategorias TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eImportacion.ImportarTarifasPrecioPileta TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eImportacion.ImportarResponsablesDePago TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eImportacion.ImportarPagoCuotas TO AdministrativoCobranza;
+GRANT EXECUTE ON OBJECT::eImportacion.ImportarDatosClima TO AdministrativoSocio;
 GO
 
 -- ====================================================================
@@ -88,10 +91,7 @@ GRANT SELECT ON eCobros.Pago TO AdministrativoMorosidad;
 GRANT SELECT ON eSocios.Socio TO AdministrativoMorosidad; -- Necesita ver info de socios
 
 -- Permisos de ejecución sobre SPs
-GRANT EXECUTE ON OBJECT::eCobros.AplicarRecargoSegundoVencimiento TO AdministrativoMorosidad;
--- Si hubieran SPs para notificaciones de morosidad o bloqueo de acceso, irían aquí.
---Implementar este SP, podria hacerse poniendo el estado de socio en 0 (inactivo)
--- GRANT EXECUTE ON OBJECT::eSocios.BloquearAccesoPorMorosidad TO AdministrativoMorosidad;
+ GRANT EXECUTE ON OBJECT::eCobros.verificarVencimiento TO AdministrativoMorosidad;
 GO
 
 -- ====================================================================
@@ -111,6 +111,7 @@ GRANT SELECT ON eSocios.Actividad TO AdministrativoFacturacion; -- Para obtener 
 -- Permisos de ejecución sobre SPs
 GRANT EXECUTE ON OBJECT::eCobros.GenerarFactura TO AdministrativoFacturacion;
 GRANT EXECUTE ON OBJECT::eCobros.AnularFactura TO AdministrativoFacturacion;
+GRANT EXECUTE ON OBJECT::eCobros.eliminarItemFactura TO AdministrativoFacturacion;
 GO
 
 
@@ -125,25 +126,30 @@ GO
 GRANT SELECT ON SCHEMA::eSocios TO AdministrativoSocio;
 
 --Permisos DML directos para la tabla eSocios.Categoria
-GRANT INSERT, UPDATE, DELETE ON eSocios.Categoria TO AdministrativoSocio;
+GRANT INSERT ON OBJECT::eSocios.Categoria TO AdministrativoSocio;
 
 -- Permisos de ejecución sobre TODOS los SPs del esquema eSocios
 GRANT EXECUTE ON OBJECT::eSocios.insertarSocio TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.EliminarSocio TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.ModificarSocio TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.ReInsertarSocio TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.ModificarTutor TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.EliminarTutor TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.CrearGrupoFamiliar TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.AgregarMiembroAGrupoFamiliar TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.CrearActividad TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.ModificarActividad TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.EliminarActividad TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.AsignarActividad TO AdministrativoSocio;
-GRANT EXECUTE ON OBJECT::eSocios.DesinscribirActividad TO AdministrativoSocio;
---si hay SP de insertarCategoria, va acá
---GRANT EXECUTE ON OBJECT::eSocios.ModificarCategoria TO AdministrativoSocio; --AGREGAR
---GRANT EXECUTE ON OBJECT::eSocios.EliminarCategoria TO AdministrativoSocio; --AGREGAR
+GRANT EXECUTE ON OBJECT::eSocios.eliminarSocio TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.modificarSocio TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.agregarTutor TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.modificarTutor TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.eliminarTutor TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.agregarAGrupoFamiliar TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.sacarDeGrupoFamiliar TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.crearActividad TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.modificarActividad TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.eliminarActividad TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.agregarCategoria TO AdministrativoSocio; 
+GRANT EXECUTE ON OBJECT::eSocios.modificarCategoria TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.eliminarCategoria TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.agregarHorarioActividad TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.eliminarHorarioActividad TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.inscribirActividad TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.desinscribirActividad TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eSocios.registrarPresentismo TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eImportacion.ImportarGrupoFamiliar TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eImportacion.ImportarPresentismo TO AdministrativoSocio;
 GO
 
 
@@ -156,13 +162,13 @@ GO
 -- NOTA IMPORTANTE: La restricción a "sus propios datos" DEBE ser manejada
 -- LÓGICAMENTE dentro de los Stored Procedures o Vistas que este rol ejecute.
 -- A nivel de GRANT, solo podemos dar permiso sobre el objeto completo.
--- Permisos de lectura en tablas (solo para consulta de sus propios datos, la App filtrará)
+-- Permisos de lectura en tablas (solo para consulta de sus propios datos, la App filtrar?)
 GRANT SELECT ON eSocios.Socio TO SociosWeb;
 GRANT SELECT ON eSocios.GrupoFamiliar TO SociosWeb;
 GRANT SELECT ON eCobros.Factura TO SociosWeb;
 GRANT SELECT ON eCobros.ItemFactura TO SociosWeb;
 GRANT SELECT ON eCobros.Pago TO SociosWeb;
-GRANT SELECT ON eCobros.EntradaPileta TO SociosWeb;
+GRANT SELECT ON eCobros.PreciosAcceso TO SociosWeb;
 GRANT SELECT ON eSocios.Actividad TO SociosWeb;
 GRANT SELECT ON eSocios.Categoria TO SociosWeb;
 
@@ -170,7 +176,7 @@ GRANT SELECT ON eSocios.Categoria TO SociosWeb;
 -- EJEMPLO: Si tienes un SP llamado eSocios.ConsultarDatosSocio(@id_socio),
 -- este SP debería internamente usar el ID del socio logueado para filtrar.
 -- GRANT EXECUTE ON OBJECT::eSocios.ConsultarMisCuotas TO SociosWeb;
--- GRANT EXECUTE ON OBJECT::eSocios.AgregarFamiliarWeb TO SociosWeb; -- Si hay un SP para esto con validación interna
+-- GRANT EXECUTE ON OBJECT::eSocios.AgregarFamiliarWeb TO SociosWeb; -- Si hay un SP para esto con validaci?n interna
 GO
 
 -- ====================================================================

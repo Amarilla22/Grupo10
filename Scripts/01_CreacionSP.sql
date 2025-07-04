@@ -2115,30 +2115,29 @@ BEGIN
 		
 		BEGIN TRANSACTION
 	
-		--Actualizacion
+		--Actualizacion en la tabla
 		UPDATE eAdministrativos.UsuarioAdministrativo
 			SET 
 				rol = COALESCE(@nuevo_rol, @rol_actual),
 				nombre_usuario = COALESCE(@nuevo_nombre_usuario, @nombre_usuario_actual),
 				clave = COALESCE(HASHBYTES('SHA2_256', @nueva_clave), @clave_hash_actual),
 				fecha_vigencia_clave = COALESCE(DATEADD(DAY, @vigencia_dias, GETDATE()), @fecha_vigencia_clave_actual),
-				ultimo_cambio_clave = GETDATE()
+				ultimo_cambio_clave = CASE WHEN @nueva_clave IS NOT NULL THEN GETDATE() ELSE ultimo_cambio_clave END
 			WHERE id_usuario = @id_usuario;
-
 
 		--Cambios en LOGIN y USER
 		DECLARE @sql_dynamic NVARCHAR(MAX);
-		DECLARE @current_db_name SYSNAME = DB_NAME(); -- Obtiene el nombre de la base de datos actual
+		DECLARE @current_db_name SYSNAME = DB_NAME();
 
 		-- Si el nombre de usuario cambió, renombrar LOGIN y USER
 		IF @nuevo_nombre_usuario IS NOT NULL AND @nuevo_nombre_usuario <> @nombre_usuario_actual
 		BEGIN
 			-- Renombrar LOGIN
-			SET @sql_dynamic = 'ALTER LOGIN [' + @nombre_usuario_actual + '] WITH NAME = [' + @nuevo_nombre_usuario + '];';
+			SET @sql_dynamic = N'ALTER LOGIN [' + @nombre_usuario_actual + N'] WITH NAME = [' + @nuevo_nombre_usuario + N'];';
 			EXEC sp_executesql @sql_dynamic;
 
 			-- Renombrar USER
-			SET @sql_dynamic = 'ALTER USER [' + @nombre_usuario_actual + '] WITH NAME = [' + @nuevo_nombre_usuario + '];';
+			SET @sql_dynamic = N'ALTER USER [' + @nombre_usuario_actual + N'] WITH NAME = [' + @nuevo_nombre_usuario + N'];';
 			EXEC sp_executesql @sql_dynamic;
 		END;
 
@@ -2147,22 +2146,27 @@ BEGIN
 		BEGIN
 			-- Usar el nombre de usuario que será el actual después de un posible renombramiento
 			DECLARE @login_name_for_password NVARCHAR(50) = ISNULL(@nuevo_nombre_usuario, @nombre_usuario_actual);
-			SET @sql_dynamic = 'ALTER LOGIN [' + @login_name_for_password + '] WITH PASSWORD = ''' + @nueva_clave + ''' CHECK_POLICY = ON, CHECK_EXPIRATION = ON, DEFAULT_DATABASE = [' + @current_db_name + '];';
+			
+			-- Usar QUOTENAME para manejar caracteres especiales en la contraseña
+			SET @sql_dynamic = N'ALTER LOGIN [' + @login_name_for_password + N'] WITH PASSWORD = ' + QUOTENAME(@nueva_clave, '''') + N', CHECK_POLICY = ON, CHECK_EXPIRATION = ON, DEFAULT_DATABASE = [' + @current_db_name + N'];';
 			EXEC sp_executesql @sql_dynamic;
 		END;
 
-		-- Si el rol cambió, reasignar el USER al nuevo rol (y remover del antiguo si es diferente)
+		-- Si el rol cambió, reasignar el USER al nuevo rol
 		IF @nuevo_rol IS NOT NULL AND @nuevo_rol <> @rol_actual
 		BEGIN
-			-- Remover del rol antiguo (si no es 'public', que es el rol por defecto y no se puede remover)
-			IF @rol_actual IS NOT NULL AND @rol_actual <> 'public' AND EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @rol_actual AND type = 'R')
+			DECLARE @final_username NVARCHAR(50) = ISNULL(@nuevo_nombre_usuario, @nombre_usuario_actual);
+			
+			-- Remover del rol antiguo (si no es 'public' y existe)
+			IF @rol_actual IS NOT NULL AND @rol_actual <> 'public' AND 
+			   EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @rol_actual AND type = 'R')
 			BEGIN
-				SET @sql_dynamic = 'ALTER ROLE [' + @rol_actual + '] DROP MEMBER [' + ISNULL(@nuevo_nombre_usuario, @nombre_usuario_actual) + '];';
+				SET @sql_dynamic = N'ALTER ROLE [' + @rol_actual + N'] DROP MEMBER [' + @final_username + N'];';
 				EXEC sp_executesql @sql_dynamic;
 			END;
 
 			-- Añadir al nuevo rol
-			SET @sql_dynamic = 'ALTER ROLE [' + @nuevo_rol + '] ADD MEMBER [' + ISNULL(@nuevo_nombre_usuario, @nombre_usuario_actual) + '];';
+			SET @sql_dynamic = N'ALTER ROLE [' + @nuevo_rol + N'] ADD MEMBER [' + @final_username + N'];';
 			EXEC sp_executesql @sql_dynamic;
 		END;
 
@@ -2175,7 +2179,7 @@ BEGIN
 
 		DECLARE @msg NVARCHAR(4000) = ERROR_MESSAGE();
 		THROW 50000, @msg, 1;
-	END CATCH
+	END CATCH
 END; 
 GO
 
