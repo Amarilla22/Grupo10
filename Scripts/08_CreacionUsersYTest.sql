@@ -11,16 +11,19 @@ Integrantes:
 - Fleita Thiago , DNI: 45233264
 */
 
--- ===============================================================================================================================================================
+USE Com5600G10
+GO
 
-														-- CASOS DE PRUEBA - STORED PROCEDURES DE USUARIOS--
+-- =========================================================================
 
--- ===============================================================================================================================================================
+			-- CASOS DE PRUEBA - STORED PROCEDURES DE USUARIOS--
+
+-- =========================================================================
 
 
--- ===============================================================================================================================================================
---														--PRIMERO CREO USUARIOS INICIALES PARA CADA ROL--
--- ===============================================================================================================================================================
+-- =========================================================================
+--			  --PRIMERO CREO USUARIOS INICIALES PARA CADA ROL--
+-- =========================================================================
 
 -- Usuario para JefeTesoreria
 -- Resultado esperado: Usuario creado exitosamente
@@ -101,16 +104,11 @@ EXEC eAdministrativos.CrearUsuario
     @nombre_usuario = 'vocal01',
     @clave = 'VocalPass890=',
     @vigencia_dias = 90;
-
--- =====================================================
--- VERIFICAR USUARIOS CREADOS
--- =====================================================
-SELECT * FROM eAdministrativos.UsuarioAdministrativo
 GO
 
---===============================================================================================================================================================
---																--CASOS DE PRUEBA SP: CrearUsuario--
--- ===============================================================================================================================================================
+-- =========================================================================
+--			      CASOS DE PRUEBA SP: CrearUsuario
+-- =========================================================================
 
 -- TEST 1: Crear usuario con parámetros válidos
 -- Resultado esperado: Usuario creado exitosamente
@@ -149,14 +147,11 @@ EXEC eAdministrativos.CrearUsuario
 GO
 
 
---===============================================================================================================================================================
---																--CASOS DE PRUEBA SP: ModificarUsuario--
--- ===============================================================================================================================================================
+-- =========================================================================
+--			   CASOS DE PRUEBA SP: ModificarUsuario
+-- =========================================================================
 
 -- Primero obtenemos los IDs de algunos usuarios para las pruebas
-SELECT id_usuario, nombre_usuario, rol FROM eAdministrativos.UsuarioAdministrativo 
-WHERE nombre_usuario IN ('jefe_tesoreria01', 'admin_cobranza01', 'test_usuario_valido');
-GO
 
 -- TEST 1: Modificar rol de usuario existente
 -- Resultado esperado: Usuario modificado exitosamente
@@ -234,9 +229,9 @@ EXEC eAdministrativos.ModificarUsuario
 GO
 
 
---===============================================================================================================================================================
---																--CASOS DE PRUEBA SP: EliminarUsuario--
--- ===============================================================================================================================================================
+-- =========================================================================
+--			  CASOS DE PRUEBA SP: EliminarUsuario
+-- =========================================================================
 
 -- TEST 1: Eliminar usuario existente
 -- Resultado esperado: Usuario eliminado exitosamente
@@ -249,4 +244,4 @@ GO
 EXEC eAdministrativos.EliminarUsuario @id_usuario = 9999;
 GO
 
-select * from eAdministrativos.UsuarioAdministrativo
+SELECT * FROM eAdministrativos.UsuarioAdministrativo

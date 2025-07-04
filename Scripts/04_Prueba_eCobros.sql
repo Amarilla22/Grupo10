@@ -609,6 +609,7 @@ DELETE FROM eSocios.datos_meteorologicos;
 DELETE FROM eSocios.ubicaciones;
 
 
+
 DBCC CHECKIDENT ('eSocios.Actividad', RESEED, 0);
 DBCC CHECKIDENT ('eSocios.Categoria', RESEED, 0);
 DBCC CHECKIDENT ('eCobros.Factura', RESEED, 0);

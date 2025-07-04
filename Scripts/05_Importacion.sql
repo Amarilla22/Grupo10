@@ -281,30 +281,51 @@ BEGIN
     -- Limpiar y validar datos antes de insertar
     ;WITH DatosLimpios AS (
         SELECT
-            LTRIM(RTRIM(id_socio)) AS id_socio,
+            -- Ajustar a VARCHAR(20) según la nueva definición
+            CASE 
+                WHEN LEN(LTRIM(RTRIM(id_socio))) <= 20 THEN LTRIM(RTRIM(id_socio))
+                ELSE LEFT(LTRIM(RTRIM(id_socio)), 20)
+            END AS id_socio,
             @IdCategoria AS id_categoria,
             TRY_CAST(REPLACE(REPLACE(dni, '.', ''), '-', '') AS INT) AS dni,
-            LTRIM(RTRIM(nombre)) AS nombre,
-            LTRIM(RTRIM(apellido)) AS apellido,
+            -- Ajustar a VARCHAR(50) según la nueva definición
+            CASE 
+                WHEN LEN(LTRIM(RTRIM(nombre))) <= 50 THEN LTRIM(RTRIM(nombre))
+                ELSE LEFT(LTRIM(RTRIM(nombre)), 50)
+            END AS nombre,
+            CASE 
+                WHEN LEN(LTRIM(RTRIM(apellido))) <= 50 THEN LTRIM(RTRIM(apellido))
+                ELSE LEFT(LTRIM(RTRIM(apellido)), 50)
+            END AS apellido,
             LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(email, ' ', ''), '_', '.'), '..', '.')))) AS email,
             TRY_CONVERT(DATE, fecha_nac, 103) AS fecha_nac,
             TRY_CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(telefono, ' ', ''), '-', ''), '/', ''), '.', ''), '(', ''), ')', '') AS BIGINT) AS telefono,
             TRY_CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(telefono_emergencia, ' ', ''), '-', ''), '/', ''), '.', ''), '(', ''), ')', '') AS BIGINT) AS telefono_emergencia,
-            LTRIM(RTRIM(obra_social)) AS obra_social,
-            LTRIM(RTRIM(nro_obra_social)) AS nro_obra_social,
-            LTRIM(RTRIM(tel_obra_social)) AS tel_obra_social
+            -- Ajustar a VARCHAR(50) según la nueva definición
+            CASE 
+                WHEN LEN(LTRIM(RTRIM(obra_social))) <= 50 THEN LTRIM(RTRIM(obra_social))
+                ELSE LEFT(LTRIM(RTRIM(obra_social)), 50)
+            END AS obra_social,
+            -- Ajustar a VARCHAR(15) según la nueva definición
+            CASE 
+                WHEN LEN(LTRIM(RTRIM(nro_obra_social))) <= 15 THEN LTRIM(RTRIM(nro_obra_social))
+                ELSE LEFT(LTRIM(RTRIM(nro_obra_social)), 15)
+            END AS nro_obra_social,
+            -- Convertir tel_obra_social a BIGINT (nuevo tipo de dato)
+            TRY_CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(tel_obra_social, ' ', ''), '-', ''), '/', ''), '.', ''), '(', ''), ')', '') AS BIGINT) AS tel_obra_social
         FROM #ImportacionSocios
         WHERE
             -- Validaciones básicas
             LTRIM(RTRIM(id_socio)) IS NOT NULL
             AND LTRIM(RTRIM(id_socio)) != ''
+            AND LEN(LTRIM(RTRIM(id_socio))) <= 20  -- Validar longitud máxima
             AND TRY_CAST(REPLACE(REPLACE(dni, '.', ''), '-', '') AS INT) IS NOT NULL
             AND TRY_CONVERT(DATE, fecha_nac, 103) IS NOT NULL
             AND LTRIM(RTRIM(nombre)) IS NOT NULL
             AND LTRIM(RTRIM(nombre)) != ''
             AND LTRIM(RTRIM(apellido)) IS NOT NULL
             AND LTRIM(RTRIM(apellido)) != ''
-            -- Validaciones de email
+            -- Validaciones de email (las mismas que están en el CHECK constraint)
             AND LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(email, ' ', ''), '_', '.'), '..', '.')))) LIKE '%@%.%'
             AND LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(email, ' ', ''), '_', '.'), '..', '.')))) NOT LIKE '%@%@%'
             AND LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(email, ' ', ''), '_', '.'), '..', '.')))) NOT LIKE '@%'
@@ -337,12 +358,12 @@ BEGIN
     INSERT INTO eSocios.Socio (
         id_socio, id_categoria, dni, nombre, apellido, email,
         fecha_nac, telefono, telefono_emergencia, obra_social,
-        nro_obra_social, tel_obra_social
+        nro_obra_social, tel_obra_social, activo
     )
     SELECT 
         du.id_socio, du.id_categoria, du.dni, du.nombre, du.apellido, du.email,
         du.fecha_nac, du.telefono, du.telefono_emergencia, du.obra_social,
-        du.nro_obra_social, du.tel_obra_social
+        du.nro_obra_social, du.tel_obra_social, 1 -- Valor por defecto para activo
     FROM DatosUnicos du
     WHERE NOT EXISTS (
         SELECT 1 FROM eSocios.Socio s
@@ -404,11 +425,11 @@ BEGIN
     
     EXEC sp_executesql @sql;
     
-    -- ELIMINAR FILA DE ENCABEZADOS SI EXISTE (adaptando lógica de tu amigo)
+    -- ELIMINAR FILA DE ENCABEZADOS SI EXISTE
     WITH CTE AS (
         SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS rn
         FROM #ImportacionSocios
-        WHERE [nro de socio] = 'nro de socio' OR [Nombre] = 'Nombre' -- Detectar encabezados
+        WHERE [nro de socio] = 'nro de socio' OR [Nombre] = 'Nombre'
     )
     DELETE FROM CTE WHERE rn >= 1;
     
@@ -429,14 +450,14 @@ BEGIN
         dni INT,
         email NVARCHAR(100),
         fecha_nac DATE,
-        telefono NVARCHAR(20),
-        telefono_emergencia NVARCHAR(20),
+        telefono BIGINT,
+        telefono_emergencia BIGINT,
         obra_social NVARCHAR(50),
         nro_obra_social NVARCHAR(15),
-        tel_obra_social NVARCHAR(30)
+        tel_obra_social BIGINT
     );
     
-    -- INSERTAR DATOS LIMPIOS CON VALIDACIONES (usando lógica tipo JOIN)
+    -- INSERTAR DATOS LIMPIOS CON VALIDACIONES
     INSERT INTO #DatosLimpios
     SELECT 
         LTRIM(RTRIM([nro de socio])) as nro_socio,
@@ -453,24 +474,37 @@ BEGIN
             THEN CAST(CAST([DNI] AS FLOAT) AS INT)
             ELSE TRY_CAST([DNI] AS INT)
         END as dni,
-        [email personal] as email,
+        CASE 
+            WHEN [email personal] IS NULL OR LTRIM(RTRIM([email personal])) = ''
+            THEN NULL
+            ELSE LTRIM(RTRIM([email personal]))
+        END as email,
         -- CONVERSIÓN DE FECHA
         COALESCE(
             TRY_CONVERT(DATE, [fecha nac], 103),  -- dd/mm/yyyy
             TRY_CONVERT(DATE, [fecha nac], 101)   -- mm/dd/yyyy
         ) as fecha_nac,
-        [telefono contacto] as telefono,
-        [telefono de emergencia] as telefono_emergencia,
-        [nombre de obra social] as obra_social,
-        [nro de obra social] as nro_obra_social,
-        [telefono de obra social] as tel_obra_social
+        -- CONVERSIÓN DE TELÉFONOS A BIGINT
+        TRY_CAST(REPLACE(REPLACE(REPLACE([telefono contacto], '-', ''), ' ', ''), '(', '') AS BIGINT) as telefono,
+        TRY_CAST(REPLACE(REPLACE(REPLACE([telefono de emergencia], '-', ''), ' ', ''), '(', '') AS BIGINT) as telefono_emergencia,
+        CASE 
+            WHEN [nombre de obra social] IS NULL OR LTRIM(RTRIM([nombre de obra social])) = ''
+            THEN NULL
+            ELSE LTRIM(RTRIM([nombre de obra social]))
+        END as obra_social,
+        CASE 
+            WHEN [nro de obra social] IS NULL OR LTRIM(RTRIM([nro de obra social])) = ''
+            THEN NULL
+            ELSE LTRIM(RTRIM([nro de obra social]))
+        END as nro_obra_social,
+        TRY_CAST(REPLACE(REPLACE(REPLACE([telefono de obra social], '-', ''), ' ', ''), '(', '') AS BIGINT) as tel_obra_social
     FROM #ImportacionSocios
     WHERE [nro de socio] IS NOT NULL 
       AND LTRIM(RTRIM([nro de socio])) != ''
       AND [DNI] IS NOT NULL 
       AND LTRIM(RTRIM([DNI])) != '';
     
-    -- REGISTRAR ERRORES DE CONVERSIÓN
+    -- REGISTRAR ERRORES DE CONVERSIÓN Y VALIDACIÓN
     INSERT INTO #Errores (nro_socio, dni, error_descripcion)
     SELECT 
         LTRIM(RTRIM([nro de socio])),
@@ -506,7 +540,7 @@ BEGIN
       AND LTRIM(RTRIM([DNI])) != ''
       AND ([nro de socio] NOT IN (SELECT nro_socio FROM #DatosLimpios WHERE nro_socio IS NOT NULL));
     
-    -- VALIDAR DUPLICADOS Y REFERENCIAS (usando JOINs como tu amigo)
+    -- VALIDAR DUPLICADOS Y REFERENCIAS
     -- Socios que ya existen
     INSERT INTO #Errores (nro_socio, dni, error_descripcion)
     SELECT dl.nro_socio, CAST(dl.dni AS NVARCHAR), 'El número de socio ya existe'
@@ -527,43 +561,58 @@ BEGIN
     WHERE dl.nro_socio_rp IS NOT NULL 
       AND s.id_socio IS NULL;
     
-    -- INSERTAR SOCIOS VÁLIDOS (sin errores)
+    -- Validar que los responsables tengan email (requerido para tutores)
+    INSERT INTO #Errores (nro_socio, dni, error_descripcion)
+    SELECT dl.nro_socio, CAST(dl.dni AS NVARCHAR), 'El socio responsable no tiene email válido (requerido para tutor)'
+    FROM #DatosLimpios dl
+    INNER JOIN eSocios.Socio s ON s.id_socio = dl.nro_socio_rp
+    WHERE dl.nro_socio_rp IS NOT NULL 
+      AND (s.email IS NULL OR s.email = '' OR s.email NOT LIKE '%@%.%');
+    
+    -- Validar que los responsables tengan teléfono (requerido para tutores)
+    INSERT INTO #Errores (nro_socio, dni, error_descripcion)
+    SELECT dl.nro_socio, CAST(dl.dni AS NVARCHAR), 'El socio responsable no tiene teléfono válido (requerido para tutor)'
+    FROM #DatosLimpios dl
+    INNER JOIN eSocios.Socio s ON s.id_socio = dl.nro_socio_rp
+    WHERE dl.nro_socio_rp IS NOT NULL 
+      AND s.telefono IS NULL;
+    
     -- INSERTAR SOCIOS VÁLIDOS con categoría dinámica según edad
-	INSERT INTO eSocios.Socio (
-		id_socio, id_categoria, dni, nombre, apellido, email, 
-		fecha_nac, telefono, telefono_emergencia, obra_social, 
-		nro_obra_social, tel_obra_social, activo
-	)
-	SELECT 
-		dl.nro_socio,
-		cat.id_categoria,
-		dl.dni,
-		dl.nombre,
-		dl.apellido,
-		dl.email,
-		dl.fecha_nac,
-		dl.telefono,
-		dl.telefono_emergencia,
-		dl.obra_social,
-		dl.nro_obra_social,
-		dl.tel_obra_social,
-		1 -- activo
-	FROM #DatosLimpios dl
-	CROSS APPLY (
-		SELECT DATEDIFF(YEAR, dl.fecha_nac, GETDATE()) 
-			   - CASE 
-				   WHEN MONTH(dl.fecha_nac) > MONTH(GETDATE()) 
-						OR (MONTH(dl.fecha_nac) = MONTH(GETDATE()) AND DAY(dl.fecha_nac) > DAY(GETDATE()))
-				   THEN 1 ELSE 0
-				 END AS edad
-	) AS edad_calc
-	INNER JOIN eSocios.Categoria cat ON 
-		(edad_calc.edad < 12 AND cat.nombre = 'Menor')
-		OR (edad_calc.edad BETWEEN 12 AND 17 AND cat.nombre = 'Cadete')
-		OR (edad_calc.edad >= 18 AND cat.nombre = 'Mayor')
-	WHERE dl.nro_socio NOT IN (SELECT nro_socio FROM #Errores WHERE nro_socio IS NOT NULL);
+    INSERT INTO eSocios.Socio (
+        id_socio, id_categoria, dni, nombre, apellido, email, 
+        fecha_nac, telefono, telefono_emergencia, obra_social, 
+        nro_obra_social, tel_obra_social, activo
+    )
+    SELECT 
+        dl.nro_socio,
+        cat.id_categoria,
+        dl.dni,
+        dl.nombre,
+        dl.apellido,
+        dl.email,
+        dl.fecha_nac,
+        dl.telefono,
+        dl.telefono_emergencia,
+        dl.obra_social,
+        dl.nro_obra_social,
+        dl.tel_obra_social,
+        1 -- activo
+    FROM #DatosLimpios dl
+    CROSS APPLY (
+        SELECT DATEDIFF(YEAR, dl.fecha_nac, GETDATE()) 
+               - CASE 
+                   WHEN MONTH(dl.fecha_nac) > MONTH(GETDATE()) 
+                        OR (MONTH(dl.fecha_nac) = MONTH(GETDATE()) AND DAY(dl.fecha_nac) > DAY(GETDATE()))
+                   THEN 1 ELSE 0
+                 END AS edad
+    ) AS edad_calc
+    INNER JOIN eSocios.Categoria cat ON 
+        (edad_calc.edad < 12 AND cat.nombre = 'Menor')
+        OR (edad_calc.edad BETWEEN 12 AND 17 AND cat.nombre = 'Cadete')
+        OR (edad_calc.edad >= 18 AND cat.nombre = 'Mayor')
+    WHERE dl.nro_socio NOT IN (SELECT nro_socio FROM #Errores WHERE nro_socio IS NOT NULL);
 
-    -- INSERTAR TUTORES QUE NO EXISTEN (adaptando lógica de tu amigo con JOIN)
+    -- INSERTAR TUTORES QUE NO EXISTEN
     WITH TutoresAInsertar AS (
         SELECT DISTINCT 
             rp.id_socio as id_tutor,
@@ -572,20 +621,21 @@ BEGIN
             rp.dni,
             rp.email,
             rp.fecha_nac,
-            TRY_CAST(rp.telefono AS BIGINT) as telefono
+            rp.telefono
         FROM #DatosLimpios dl
         INNER JOIN eSocios.Socio rp ON rp.id_socio = dl.nro_socio_rp
         LEFT JOIN eSocios.Tutor t ON t.id_tutor = rp.id_socio
         WHERE dl.nro_socio_rp IS NOT NULL 
           AND t.id_tutor IS NULL
-          AND TRY_CAST(rp.telefono AS BIGINT) IS NOT NULL
+          AND rp.email IS NOT NULL
+          AND rp.telefono IS NOT NULL
           AND dl.nro_socio NOT IN (SELECT nro_socio FROM #Errores WHERE nro_socio IS NOT NULL)
     )
     INSERT INTO eSocios.Tutor (id_tutor, nombre, apellido, DNI, email, fecha_nac, telefono)
     SELECT id_tutor, nombre, apellido, dni, email, fecha_nac, telefono
     FROM TutoresAInsertar;
     
-    -- CREAR RELACIONES GRUPO FAMILIAR (usando JOIN como tu amigo)
+    -- CREAR RELACIONES GRUPO FAMILIAR
     INSERT INTO eSocios.GrupoFamiliar (id_socio, id_tutor, descuento, parentesco)
     SELECT 
         dl.nro_socio,

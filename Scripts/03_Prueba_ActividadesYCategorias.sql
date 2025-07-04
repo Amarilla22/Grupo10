@@ -7,7 +7,6 @@ SET NOCOUNT ON
 GO
 
 
-
 PRINT '
 -- ==========================================
 -- CASOS DE PRUEBA PARA SP: eSocios.agregarCategoria

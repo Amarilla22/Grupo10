@@ -64,13 +64,12 @@ BEGIN
 
             DECLARE @id_factura INT = SCOPE_IDENTITY();
 
-            -- 6. Insertar ítems
-            INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto, periodo)
+            -- 6. Insertar ítems (sin campo periodo)
+            INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto)
             SELECT 
                 @id_factura,
                 nombre,
-                costo,
-                FORMAT(@fecha_emision, 'yyyy-MM')
+                costo
             FROM @actividad;
 
             -- 7. Insertar pagos si corresponde
