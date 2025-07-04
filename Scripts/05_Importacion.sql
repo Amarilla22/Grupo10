@@ -929,281 +929,143 @@ EXEC eImportacion.ImportarPresentismo @RutaArchivo = 'S:\importacion\Datos socio
 GO
 
 
---no funciona
 CREATE OR ALTER PROCEDURE eImportacion.ImportarDatosClima
     @RutaArchivo NVARCHAR(500),
-    @NombreUbicacion NVARCHAR(100) = NULL,
-    @TipoFormato VARCHAR(10) = 'AUTO'
+    @NombreUbicacion NVARCHAR(100)
 AS
 BEGIN
-    SET NOCOUNT ON;
+    -- Eliminar tablas temporales si existen
+    IF OBJECT_ID('tempdb..#UbicacionTemporal') IS NOT NULL DROP TABLE #UbicacionTemporal;
+    IF OBJECT_ID('tempdb..#ClimaTemporal') IS NOT NULL DROP TABLE #ClimaTemporal;
 
-    DECLARE @UbicacionId INT;
-    DECLARE @ErrorMessage NVARCHAR(4000);
-    DECLARE @SQL NVARCHAR(MAX);
-    DECLARE @RowTerminator VARCHAR(10) = '\r\n';
+    -- Tabla temporal para ubicación (fila 2)
+    CREATE TABLE #UbicacionTemporal (
+        latitud NVARCHAR(50),
+        longitud NVARCHAR(50),
+        elevacion NVARCHAR(50),
+        utc_offset_seconds NVARCHAR(50),
+        timezone NVARCHAR(50),
+        timezone_abbreviation NVARCHAR(50)
+    );
+
+    -- Tabla temporal para datos climáticos (desde fila 4)
+    CREATE TABLE #ClimaTemporal (
+        Fecha NVARCHAR(50),
+        Temperatura NVARCHAR(50),
+        Lluvia NVARCHAR(50),
+        Humedad NVARCHAR(50),
+        Viento NVARCHAR(50)
+    );
 
     BEGIN TRY
+        DECLARE @sql NVARCHAR(MAX);
+
+        -- Importar ubicación (fila 2)
+        SET @sql = '
+        BULK INSERT #UbicacionTemporal
+        FROM ''' + @RutaArchivo + '''
+        WITH (
+            FIRSTROW = 2,
+            LASTROW = 2,
+            FIELDTERMINATOR = '','',
+            ROWTERMINATOR = ''0x0a'',
+            CODEPAGE = ''65001''
+        );';
+        EXEC sp_executesql @sql;
+
+        -- Importar clima (desde fila 4)
+        SET @sql = '
+        BULK INSERT #ClimaTemporal
+        FROM ''' + @RutaArchivo + '''
+        WITH (
+            FIRSTROW = 4,
+            FIELDTERMINATOR = '','',
+            ROWTERMINATOR = ''0x0a'',
+            CODEPAGE = ''65001''
+        );';
+        EXEC sp_executesql @sql;
+
+        -- Iniciar transacción
         BEGIN TRANSACTION;
 
-        IF @TipoFormato = 'UNIX'
-            SET @RowTerminator = '\n';
-        ELSE IF @TipoFormato = 'MAC'
-            SET @RowTerminator = '\r';
+        -- Buscar ubicación existente con los mismos datos y mismo nombre
+        DECLARE @ubicacion_id INT;
 
-        PRINT 'Iniciando importación desde: ' + @RutaArchivo;
-        PRINT 'Formato de línea: ' + @TipoFormato + ' (' + @RowTerminator + ')';
+        SELECT TOP 1 @ubicacion_id = u.id
+        FROM eSocios.ubicaciones u
+        JOIN #UbicacionTemporal t ON
+            u.latitud = TRY_CAST(t.latitud AS DECIMAL(10,8)) AND
+            u.longitud = TRY_CAST(t.longitud AS DECIMAL(11,8)) AND
+            ISNULL(u.elevacion, 0) = ISNULL(TRY_CAST(t.elevacion AS DECIMAL(8,2)), 0) AND
+            ISNULL(u.utc_offset_seconds, 0) = ISNULL(TRY_CAST(t.utc_offset_seconds AS INT), 0) AND
+            ISNULL(u.timezone, '') = ISNULL(t.timezone, '') AND
+            ISNULL(u.timezone_abbreviation, '') = ISNULL(t.timezone_abbreviation, '') AND
+            ISNULL(u.nombre_ubicacion, '') = @NombreUbicacion;
 
-        CREATE TABLE #TempCSVRaw (
-            RowNum INT IDENTITY(1,1),
-            LineData NVARCHAR(1000)
-        );
-
-        BEGIN TRY
-            SET @SQL = '
-            BULK INSERT #TempCSVRaw
-            FROM ''' + @RutaArchivo + '''
-            WITH (
-                ROWTERMINATOR = ''' + @RowTerminator + ''',
-                FIELDTERMINATOR = ''|||||'',
-                FIRSTROW = 1,
-                CODEPAGE = ''65001'',
-                DATAFILETYPE = ''char'',
-                TABLOCK
-            )';
-
-            EXEC sp_executesql @SQL;
-            PRINT 'Archivo importado exitosamente con terminador: ' + @RowTerminator;
-		END TRY
-         BEGIN CATCH
-            PRINT 'Error con terminador ' + @RowTerminator + '. Intentando con \\n...';
-
-            IF @@TRANCOUNT > 0
-                ROLLBACK;
-
-            BEGIN TRANSACTION;
-
-            -- ?? RECREAR la tabla temporal antes del segundo intento
-            IF OBJECT_ID('tempdb..#TempCSVRaw') IS NOT NULL
-                DROP TABLE #TempCSVRaw;
-
-            CREATE TABLE #TempCSVRaw (
-                RowNum INT IDENTITY(1,1),
-                LineData NVARCHAR(1000)
-            );
-
-            SET @SQL = '
-            BULK INSERT #TempCSVRaw
-            FROM ''' + @RutaArchivo + '''
-            WITH (
-                ROWTERMINATOR = ''\n'',
-                FIELDTERMINATOR = ''|||||'',
-                FIRSTROW = 1,
-                CODEPAGE = ''65001'',
-                DATAFILETYPE = ''char'',
-                TABLOCK
-            )';
-
-            EXEC sp_executesql @SQL;
-            PRINT 'Archivo importado exitosamente con terminador: \\n';
-        END CATCH
-
-        -- Filtrar líneas vacías
-        DECLARE @TotalRows INT;
-        SELECT @TotalRows = COUNT(*) 
-        FROM #TempCSVRaw
-        WHERE LEN(LTRIM(RTRIM(LineData))) > 0;
-
-        IF @TotalRows = 0
-        BEGIN
-            RAISERROR('No se pudieron importar datos del archivo. Verifique la ruta y formato.', 16, 1);
-            RETURN;
-        END
-
-        PRINT 'Total de líneas importadas (no vacías): ' + CAST(@TotalRows AS VARCHAR(10));
-
-        PRINT 'Primeras 5 líneas del archivo:';
-        SELECT TOP 5 
-            CAST(RowNum AS VARCHAR(5)) + ': ' + 
-            CASE 
-                WHEN LEN(LineData) > 100 THEN LEFT(LineData, 100) + '...'
-                ELSE LineData
-            END as Contenido
-        FROM #TempCSVRaw
-        WHERE LEN(LTRIM(RTRIM(LineData))) > 0
-        ORDER BY RowNum;
-
-        DECLARE @Latitud DECIMAL(10,8);
-        DECLARE @Longitud DECIMAL(11,8);
-        DECLARE @Elevacion DECIMAL(8,2);
-        DECLARE @UtcOffsetSeconds INT;
-        DECLARE @Timezone VARCHAR(50);
-        DECLARE @TimezoneAbbr VARCHAR(10);
-        DECLARE @UbicacionLine NVARCHAR(1000) = NULL;
-
-        SELECT @UbicacionLine = LineData
-        FROM #TempCSVRaw
-        WHERE RowNum = 2;
-
-        IF @UbicacionLine IS NULL OR LEN(@UbicacionLine) < 10
-        BEGIN
-            RAISERROR('No se encontró línea de datos de ubicación en la fila 2 del archivo.', 16, 1);
-            RETURN;
-        END
-
-        DECLARE @Pos INT = 1, @NextPos INT, @Value NVARCHAR(100), @FieldCount INT = 1;
-
-        WHILE @Pos <= LEN(@UbicacionLine) AND @FieldCount <= 6
-        BEGIN
-            SET @NextPos = CHARINDEX(',', @UbicacionLine, @Pos);
-            IF @NextPos = 0 SET @NextPos = LEN(@UbicacionLine) + 1;
-            SET @Value = LTRIM(RTRIM(SUBSTRING(@UbicacionLine, @Pos, @NextPos - @Pos)));
-
-            IF @FieldCount = 1 SET @Latitud = TRY_CAST(@Value AS DECIMAL(10,8));
-            ELSE IF @FieldCount = 2 SET @Longitud = TRY_CAST(@Value AS DECIMAL(11,8));
-            ELSE IF @FieldCount = 3 SET @Elevacion = TRY_CAST(@Value AS DECIMAL(8,2));
-            ELSE IF @FieldCount = 4 SET @UtcOffsetSeconds = TRY_CAST(@Value AS INT);
-            ELSE IF @FieldCount = 5 SET @Timezone = @Value;
-            ELSE IF @FieldCount = 6 SET @TimezoneAbbr = @Value;
-
-            SET @Pos = @NextPos + 1;
-            SET @FieldCount += 1;
-        END
-
-        IF @Latitud IS NULL OR @Longitud IS NULL
-        BEGIN
-            RAISERROR('No se pudieron extraer coordenadas válidas.', 16, 1);
-            RETURN;
-        END
-
-        SELECT @UbicacionId = id 
-        FROM eSocios.ubicaciones 
-        WHERE ABS(latitud - @Latitud) < 0.0001 
-          AND ABS(longitud - @Longitud) < 0.0001;
-
-        IF @UbicacionId IS NULL
+        -- Si no existe, insertarla
+        IF @ubicacion_id IS NULL
         BEGIN
             INSERT INTO eSocios.ubicaciones (
-                latitud, longitud, elevacion, utc_offset_seconds, timezone, timezone_abbreviation, nombre_ubicacion
-            ) VALUES (
-                @Latitud, @Longitud, ISNULL(@Elevacion, 0), ISNULL(@UtcOffsetSeconds, 0), ISNULL(@Timezone, 'GMT'),
-                ISNULL(@TimezoneAbbr, 'GMT'), ISNULL(@NombreUbicacion, 'Ubicación ' + CAST(@Latitud AS VARCHAR(20)) + ',' + CAST(@Longitud AS VARCHAR(20)))
-            );
-            SET @UbicacionId = SCOPE_IDENTITY();
+                latitud,
+                longitud,
+                elevacion,
+                utc_offset_seconds,
+                timezone,
+                timezone_abbreviation,
+                nombre_ubicacion
+            )
+            SELECT
+                TRY_CAST(latitud AS DECIMAL(10,8)),
+                TRY_CAST(longitud AS DECIMAL(11,8)),
+                TRY_CAST(elevacion AS DECIMAL(8,2)),
+                TRY_CAST(utc_offset_seconds AS INT),
+                timezone,
+                timezone_abbreviation,
+                @NombreUbicacion
+            FROM #UbicacionTemporal;
+
+            SET @ubicacion_id = SCOPE_IDENTITY();
         END
 
-        CREATE TABLE #TempDatosMeteo (
-            fecha_hora DATETIME2,
-            temperatura_2m DECIMAL(5,2),
-            lluvia_mm DECIMAL(6,2),
-            humedad_relativa_pct INT,
-            velocidad_viento_100m_kmh DECIMAL(6,2)
-        );
-
-        DECLARE @LineaActual NVARCHAR(1000);
-        DECLARE @RowCounter INT;
-        DECLARE @RegistrosProcesados INT = 0;
-
-        DECLARE csv_cursor CURSOR FOR
-        SELECT RowNum, LineData
-        FROM #TempCSVRaw
-        WHERE RowNum >= 4
-          AND LEN(LTRIM(RTRIM(LineData))) > 0
-          AND CHARINDEX(',', LineData) > 0
-        ORDER BY RowNum;
-
-        OPEN csv_cursor;
-        FETCH NEXT FROM csv_cursor INTO @RowCounter, @LineaActual;
-
-        WHILE @@FETCH_STATUS = 0
-        BEGIN
-            BEGIN TRY
-                DECLARE @FechaHora DATETIME2;
-                DECLARE @Temperatura DECIMAL(5,2);
-                DECLARE @Lluvia DECIMAL(6,2);
-                DECLARE @Humedad INT;
-                DECLARE @VelocidadViento DECIMAL(6,2);
-
-                SET @Pos = 1;
-                SET @FieldCount = 1;
-
-                WHILE @Pos <= LEN(@LineaActual) AND @FieldCount <= 5
-                BEGIN
-                    SET @NextPos = CHARINDEX(',', @LineaActual, @Pos);
-                    IF @NextPos = 0 SET @NextPos = LEN(@LineaActual) + 1;
-                    SET @Value = LTRIM(RTRIM(SUBSTRING(@LineaActual, @Pos, @NextPos - @Pos)));
-
-                    IF @FieldCount = 1 
-                    BEGIN
-                        SET @FechaHora = TRY_CAST(@Value AS DATETIME2);
-                        IF @FechaHora IS NULL
-                            SET @FechaHora = TRY_CAST(REPLACE(@Value, 'T', ' ') AS DATETIME2);
-                    END
-                    ELSE IF @FieldCount = 2 SET @Temperatura = TRY_CAST(@Value AS DECIMAL(5,2));
-                    ELSE IF @FieldCount = 3 SET @Lluvia = TRY_CAST(@Value AS DECIMAL(6,2));
-                    ELSE IF @FieldCount = 4 SET @Humedad = TRY_CAST(@Value AS INT);
-                    ELSE IF @FieldCount = 5 SET @VelocidadViento = TRY_CAST(@Value AS DECIMAL(6,2));
-
-                    SET @Pos = @NextPos + 1;
-                    SET @FieldCount += 1;
-                END
-
-                IF @FechaHora IS NOT NULL AND @Temperatura IS NOT NULL
-                BEGIN
-                    INSERT INTO #TempDatosMeteo (
-                        fecha_hora, temperatura_2m, lluvia_mm,
-                        humedad_relativa_pct, velocidad_viento_100m_kmh
-                    ) VALUES (
-                        @FechaHora, @Temperatura, ISNULL(@Lluvia, 0),
-                        ISNULL(@Humedad, 0), ISNULL(@VelocidadViento, 0)
-                    );
-                    SET @RegistrosProcesados += 1;
-                END
-            END TRY
-            BEGIN CATCH
-                PRINT 'Error procesando línea ' + CAST(@RowCounter AS VARCHAR(10)) + ': ' + LEFT(@LineaActual, 50);
-            END CATCH
-
-            FETCH NEXT FROM csv_cursor INTO @RowCounter, @LineaActual;
-        END
-
-        CLOSE csv_cursor;
-        DEALLOCATE csv_cursor;
-
+        -- Insertar datos meteorológicos
         INSERT INTO eSocios.datos_meteorologicos (
-            ubicacion_id, fecha_hora, temperatura_2m,
-            lluvia_mm, humedad_relativa_pct, velocidad_viento_100m_kmh
+            ubicacion_id,
+            fecha_hora,
+            temperatura_2m,
+            lluvia_mm,
+            humedad_relativa_pct,
+            velocidad_viento_100m_kmh
         )
-        SELECT @UbicacionId, fecha_hora, temperatura_2m,
-               lluvia_mm, humedad_relativa_pct, velocidad_viento_100m_kmh
-        FROM #TempDatosMeteo;
-
-        DECLARE @RegistrosInsertados INT = @@ROWCOUNT;
-
-        DROP TABLE #TempCSVRaw;
-        DROP TABLE #TempDatosMeteo;
+        SELECT
+            @ubicacion_id,
+            TRY_CAST(REPLACE(LTRIM(RTRIM(Fecha)), 'T', ' ') AS DATETIME2),
+            TRY_CAST(LTRIM(RTRIM(Temperatura)) AS DECIMAL(5,2)),
+            TRY_CAST(LTRIM(RTRIM(Lluvia)) AS DECIMAL(6,2)),
+            TRY_CAST(LTRIM(RTRIM(Humedad)) AS INT),
+            TRY_CAST(LTRIM(RTRIM(Viento)) AS DECIMAL(6,2))
+        FROM #ClimaTemporal
+        WHERE 
+            TRY_CAST(REPLACE(LTRIM(RTRIM(Fecha)), 'T', ' ') AS DATETIME2) IS NOT NULL AND
+            TRY_CAST(LTRIM(RTRIM(Temperatura)) AS DECIMAL(5,2)) IS NOT NULL AND
+            TRY_CAST(LTRIM(RTRIM(Lluvia)) AS DECIMAL(6,2)) IS NOT NULL AND
+            TRY_CAST(LTRIM(RTRIM(Humedad)) AS INT) IS NOT NULL AND
+            TRY_CAST(LTRIM(RTRIM(Viento)) AS DECIMAL(6,2)) IS NOT NULL AND
+            NOT EXISTS (
+                SELECT 1
+                FROM eSocios.datos_meteorologicos dm
+                WHERE dm.ubicacion_id = @ubicacion_id
+                AND dm.fecha_hora = TRY_CAST(REPLACE(LTRIM(RTRIM(#ClimaTemporal.Fecha)), 'T', ' ') AS DATETIME2)
+            );
 
         COMMIT TRANSACTION;
-
-        PRINT '=== IMPORTACIÓN EXITOSA ===';
-        PRINT 'Ubicación ID: ' + CAST(@UbicacionId AS VARCHAR(10));
-        PRINT 'Registros insertados: ' + CAST(@RegistrosInsertados AS VARCHAR(10));
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK;
-        SET @ErrorMessage = ERROR_MESSAGE();
-        PRINT '=== ERROR EN IMPORTACIÓN ===';
-        PRINT 'Error: ' + @ErrorMessage;
-        PRINT 'Línea: ' + CAST(ERROR_LINE() AS VARCHAR(10));
-        PRINT 'Procedimiento: ' + ISNULL(ERROR_PROCEDURE(), 'Principal');
-
-        IF OBJECT_ID('tempdb..#TempCSVRaw') IS NOT NULL DROP TABLE #TempCSVRaw;
-        IF OBJECT_ID('tempdb..#TempDatosMeteo') IS NOT NULL DROP TABLE #TempDatosMeteo;
-
-        THROW;
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        PRINT 'Error durante la importación: ' + ERROR_MESSAGE();
     END CATCH
 END;
 GO
 
 
-EXEC eImportacion.ImportarDatosClima @RutaArchivo = 'S:\importacion\open-meteo-buenosaires_2024.csv'
+EXEC eImportacion.ImportarDatosClima @RutaArchivo = 'S:\importacion\open-meteo-buenosaires_2025.csv', @NombreUbicacion = 'Buenos Aires';
+
