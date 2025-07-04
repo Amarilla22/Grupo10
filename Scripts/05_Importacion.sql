@@ -12,13 +12,14 @@ BEGIN
     
     BEGIN TRY
         -- Crear tabla temporal para importación
-        CREATE TABLE #ImportacionCategorias (
+        CREATE TABLE #ImportacionCategorias 
+		(
             CategoriaSocio VARCHAR(50),
             ValorCuota DECIMAL(10,2),
             VigenteHasta DATE
         );
         
-        -- Construir y ejecutar consulta dinámica para importar desde Excel
+        -- crear y ejecutar una consulta dinámica para importar desde excel
         DECLARE @SQL NVARCHAR(MAX);
         SET @SQL = '
         INSERT INTO #ImportacionCategorias 
@@ -30,7 +31,7 @@ BEGIN
         
         EXEC sp_executesql @SQL;
         
-        -- Insertar en la tabla definitiva y capturar el conteo
+        -- insertar en la tabla
         DECLARE @FilasInsertadas INT;
         
         INSERT INTO eSocios.Categoria (nombre, costo_mensual, Vigencia)
@@ -39,21 +40,20 @@ BEGIN
             ValorCuota,
             VigenteHasta
         FROM #ImportacionCategorias
-        WHERE CategoriaSocio IS NOT NULL; -- Filtrar filas vacías
+        WHERE CategoriaSocio IS NOT NULL; -- filtra filas vacías
         
         SET @FilasInsertadas = @@ROWCOUNT;
         
-        -- Limpiar tabla temporal
+        -- limpiar tabla temporal
         DROP TABLE #ImportacionCategorias;
         
-        -- Mostrar resultado
         SELECT 
             @FilasInsertadas as FilasInsertadas,
             'Importación de categorías completada exitosamente' as Mensaje;
             
     END TRY
     BEGIN CATCH
-        -- Manejo de errores
+        --manejo de errores
         IF OBJECT_ID('tempdb..#ImportacionCategorias') IS NOT NULL
             DROP TABLE #ImportacionCategorias;
             
@@ -78,8 +78,9 @@ BEGIN
     SET NOCOUNT ON;
     
     BEGIN TRY
-        -- Crear tabla temporal para importación
-        CREATE TABLE #ImportacionActividades (
+        -- crear tabla temporal para importación
+        CREATE TABLE #ImportacionActividades 
+		(
             Col1 NVARCHAR(100),
             Col2 NVARCHAR(100),
             Col3 NVARCHAR(100), 
@@ -87,7 +88,7 @@ BEGIN
             Col5 NVARCHAR(100)
         );
         
-        -- Importar datos desde Excel
+        -- importar datos desde excel
         DECLARE @SQL NVARCHAR(MAX);
         SET @SQL = '
         INSERT INTO #ImportacionActividades 
@@ -99,8 +100,7 @@ BEGIN
         
         EXEC sp_executesql @SQL;
         
-        -- Debug: Mostrar datos importados
-        IF @Debug = 1
+        IF @Debug = 1 --muestra datos importados
         BEGIN
             SELECT 'Datos importados:' as Mensaje;
             SELECT * FROM #ImportacionActividades;
@@ -108,26 +108,16 @@ BEGIN
             SELECT 'Conteo de filas:' as Mensaje, COUNT(*) as Total FROM #ImportacionActividades;
         END;
         
-        -- Procesar e insertar los datos según el layout real del Excel
-        -- Basándome en tu estructura: las filas representan diferentes modalidades
-        -- y las columnas representan las categorías y tipos de usuario
         
-        -- Desactivar precios existentes
+        -- desactivar precios existentes
         UPDATE eCobros.PreciosAcceso 
         SET activo = 0 
         WHERE activo = 1;
         
-        -- Insertar datos interpretando la estructura real
-        -- Fila 1: Valor del dia - Adultos (Socios: Col2, Invitados: Col3)
-        -- Fila 2: Valor del dia - Menores (Socios: Col2, Invitados: Col3)  
-        -- Fila 3: Valor temporada - Adultos (Solo Col2)
-        -- Fila 4: Valor temporada - Menores (Solo Col2)
-        -- Fila 5: Valor del Mes - Adultos (Solo Col2)
-        -- Fila 6: Valor del Mes - Menores (Solo Col2)
         
         DECLARE @FechaVigencia DATE = '2025-02-28';
         
-        -- Insertar todos los registros manualmente basándome en la estructura conocida
+        -- insertar todos los registros manualmente
         INSERT INTO eCobros.PreciosAcceso (categoria, tipo_usuario, modalidad, precio, vigencia_hasta, activo)
         VALUES 
         -- Valor del día
@@ -136,11 +126,11 @@ BEGIN
         ('Menores de 12 años', 'Socios', 'Valor del dia', 15000.00, @FechaVigencia, 1),
         ('Menores de 12 años', 'Invitados', 'Valor del dia', 2000.00, @FechaVigencia, 1),
         
-        -- Valor de temporada (solo socios)
+        -- Valor de temporada (socios)
         ('Adultos', 'Socios', 'Valor de temporada', 2000000.00, @FechaVigencia, 1),
         ('Menores de 12 años', 'Socios', 'Valor de temporada', 1200000.00, @FechaVigencia, 1),
         
-        -- Valor del Mes (solo socios)
+        -- Valor del Mes (socios)
         ('Adultos', 'Socios', 'Valor del Mes', 625000.00, @FechaVigencia, 1),
         ('Menores de 12 años', 'Socios', 'Valor del Mes', 375000.00, @FechaVigencia, 1);
         
@@ -157,7 +147,7 @@ BEGIN
         
     END TRY
     BEGIN CATCH
-        -- Manejo de errores
+        -- manejo de errores
         IF OBJECT_ID('tempdb..#ImportacionActividades') IS NOT NULL
             DROP TABLE #ImportacionActividades;
             
@@ -182,14 +172,14 @@ BEGIN
     SET NOCOUNT ON;
     
     BEGIN TRY
-        -- Crear tabla temporal para importación
-        CREATE TABLE #ImportacionActividades (
+   
+        CREATE TABLE #ImportacionActividades 
+		(
             Actividad NVARCHAR(50),
             ValorPorMes DECIMAL(10,2),
             VigenteHasta DATE
         );
         
-        -- Construir y ejecutar consulta dinámica para importar desde Excel
         DECLARE @SQL NVARCHAR(MAX);
         SET @SQL = '
         INSERT INTO #ImportacionActividades 
@@ -201,7 +191,8 @@ BEGIN
         
         EXEC sp_executesql @SQL;
         
-        -- Insertar en la tabla definitiva y capturar el conteo
+        -- insertar en la tabla definitiva
+		-- conteo
         DECLARE @FilasInsertadas INT;
         
         INSERT INTO eSocios.Actividad (nombre, costo_mensual, vigencia)
@@ -217,7 +208,7 @@ BEGIN
         -- Limpiar tabla temporal
         DROP TABLE #ImportacionActividades;
         
-        -- Mostrar resultado
+        -- resultado
         SELECT 
             @FilasInsertadas as FilasInsertadas,
             'Importación completada exitosamente' as Mensaje;
@@ -248,8 +239,9 @@ BEGIN
     DECLARE @insertados INT = 0;
     DECLARE @total INT = 0;
     
-    -- Crear tabla temporal para la importación
-    CREATE TABLE #ImportacionSocios (
+    -- tabla temporal para importación
+    CREATE TABLE #ImportacionSocios 
+	(
         id_socio NVARCHAR(50),
         nombre NVARCHAR(50),
         apellido NVARCHAR(50),
@@ -263,7 +255,7 @@ BEGIN
         tel_obra_social NVARCHAR(50)
     );
     
-    -- Importar datos desde Excel
+    -- Importar datos
     DECLARE @sql NVARCHAR(MAX);
     SET @sql = '
         INSERT INTO #ImportacionSocios
@@ -275,20 +267,19 @@ BEGIN
     ';
     EXEC sp_executesql @sql;
     
-    -- Obtener total de registros importados
+    -- total de registros importados
     SELECT @total = COUNT(*) FROM #ImportacionSocios;
     
     -- Limpiar y validar datos antes de insertar
     ;WITH DatosLimpios AS (
         SELECT
-            -- Ajustar a VARCHAR(20) según la nueva definición
             CASE 
                 WHEN LEN(LTRIM(RTRIM(id_socio))) <= 20 THEN LTRIM(RTRIM(id_socio))
                 ELSE LEFT(LTRIM(RTRIM(id_socio)), 20)
             END AS id_socio,
             @IdCategoria AS id_categoria,
             TRY_CAST(REPLACE(REPLACE(dni, '.', ''), '-', '') AS INT) AS dni,
-            -- Ajustar a VARCHAR(50) según la nueva definición
+
             CASE 
                 WHEN LEN(LTRIM(RTRIM(nombre))) <= 50 THEN LTRIM(RTRIM(nombre))
                 ELSE LEFT(LTRIM(RTRIM(nombre)), 50)
@@ -301,17 +292,17 @@ BEGIN
             TRY_CONVERT(DATE, fecha_nac, 103) AS fecha_nac,
             TRY_CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(telefono, ' ', ''), '-', ''), '/', ''), '.', ''), '(', ''), ')', '') AS BIGINT) AS telefono,
             TRY_CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(telefono_emergencia, ' ', ''), '-', ''), '/', ''), '.', ''), '(', ''), ')', '') AS BIGINT) AS telefono_emergencia,
-            -- Ajustar a VARCHAR(50) según la nueva definición
+
             CASE 
                 WHEN LEN(LTRIM(RTRIM(obra_social))) <= 50 THEN LTRIM(RTRIM(obra_social))
                 ELSE LEFT(LTRIM(RTRIM(obra_social)), 50)
             END AS obra_social,
-            -- Ajustar a VARCHAR(15) según la nueva definición
+
             CASE 
                 WHEN LEN(LTRIM(RTRIM(nro_obra_social))) <= 15 THEN LTRIM(RTRIM(nro_obra_social))
                 ELSE LEFT(LTRIM(RTRIM(nro_obra_social)), 15)
             END AS nro_obra_social,
-            -- Convertir tel_obra_social a BIGINT (nuevo tipo de dato)
+
             TRY_CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(tel_obra_social, ' ', ''), '-', ''), '/', ''), '.', ''), '(', ''), ')', '') AS BIGINT) AS tel_obra_social
         FROM #ImportacionSocios
         WHERE
@@ -325,7 +316,7 @@ BEGIN
             AND LTRIM(RTRIM(nombre)) != ''
             AND LTRIM(RTRIM(apellido)) IS NOT NULL
             AND LTRIM(RTRIM(apellido)) != ''
-            -- Validaciones de email (las mismas que están en el CHECK constraint)
+            -- Validaciones de email (las mismas del CHECK constraint)
             AND LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(email, ' ', ''), '_', '.'), '..', '.')))) LIKE '%@%.%'
             AND LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(email, ' ', ''), '_', '.'), '..', '.')))) NOT LIKE '%@%@%'
             AND LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(email, ' ', ''), '_', '.'), '..', '.')))) NOT LIKE '@%'
@@ -365,7 +356,8 @@ BEGIN
         du.fecha_nac, du.telefono, du.telefono_emergencia, du.obra_social,
         du.nro_obra_social, du.tel_obra_social, 1 -- Valor por defecto para activo
     FROM DatosUnicos du
-    WHERE NOT EXISTS (
+    WHERE NOT EXISTS 
+	(
         SELECT 1 FROM eSocios.Socio s
         WHERE 
             s.id_socio = du.id_socio
@@ -375,10 +367,9 @@ BEGIN
     
     SET @insertados = @@ROWCOUNT;
     
-    -- Limpieza
     DROP TABLE #ImportacionSocios;
     
-    -- Mensaje de resultado
+    -- resultado
     PRINT 'Proceso completado:'
     PRINT 'Total de registros procesados: ' + CAST(@total AS NVARCHAR(10))
     PRINT 'Registros insertados: ' + CAST(@insertados AS NVARCHAR(10))
@@ -398,7 +389,6 @@ AS
 BEGIN
     SET NOCOUNT ON;
     
-    -- Crear tabla temporal para los datos del Excel
     CREATE TABLE #ImportacionSocios (
         [nro de socio] NVARCHAR(50),
         [nro de socio RP] NVARCHAR(50),
@@ -414,7 +404,7 @@ BEGIN
         [telefono de obra social] NVARCHAR(40)
     );
     
-    -- Cargar datos desde Excel
+    -- Cargar datos
     DECLARE @sql NVARCHAR(MAX);
     SET @sql = 'INSERT INTO #ImportacionSocios 
                 SELECT * FROM OPENROWSET(
@@ -468,7 +458,7 @@ BEGIN
         END as nro_socio_rp,
         LTRIM(RTRIM([Nombre])) as nombre,
         LTRIM(RTRIM([apellido])) as apellido,
-        -- CONVERSIÓN DE DNI CON MANEJO DE NOTACIÓN CIENTÍFICA
+        -- CONVERSIÓN DE DNI 
         CASE 
             WHEN CHARINDEX('e', LOWER([DNI])) > 0 
             THEN CAST(CAST([DNI] AS FLOAT) AS INT)
@@ -561,7 +551,7 @@ BEGIN
     WHERE dl.nro_socio_rp IS NOT NULL 
       AND s.id_socio IS NULL;
     
-    -- Validar que los responsables tengan email (requerido para tutores)
+    -- Validar que los responsables tengan email (tutores)
     INSERT INTO #Errores (nro_socio, dni, error_descripcion)
     SELECT dl.nro_socio, CAST(dl.dni AS NVARCHAR), 'El socio responsable no tiene email válido (requerido para tutor)'
     FROM #DatosLimpios dl
@@ -569,7 +559,7 @@ BEGIN
     WHERE dl.nro_socio_rp IS NOT NULL 
       AND (s.email IS NULL OR s.email = '' OR s.email NOT LIKE '%@%.%');
     
-    -- Validar que los responsables tengan teléfono (requerido para tutores)
+    -- Validar que los responsables tengan teléfono (tutores)
     INSERT INTO #Errores (nro_socio, dni, error_descripcion)
     SELECT dl.nro_socio, CAST(dl.dni AS NVARCHAR), 'El socio responsable no tiene teléfono válido (requerido para tutor)'
     FROM #DatosLimpios dl
@@ -577,7 +567,7 @@ BEGIN
     WHERE dl.nro_socio_rp IS NOT NULL 
       AND s.telefono IS NULL;
     
-    -- INSERTAR SOCIOS VÁLIDOS con categoría dinámica según edad
+    -- INSERTAR SOCIOS VÁLIDOS con categoría según edad
     INSERT INTO eSocios.Socio (
         id_socio, id_categoria, dni, nombre, apellido, email, 
         fecha_nac, telefono, telefono_emergencia, obra_social, 
@@ -613,7 +603,8 @@ BEGIN
     WHERE dl.nro_socio NOT IN (SELECT nro_socio FROM #Errores WHERE nro_socio IS NOT NULL);
 
     -- INSERTAR TUTORES QUE NO EXISTEN
-    WITH TutoresAInsertar AS (
+    WITH TutoresAInsertar AS 
+	(
         SELECT DISTINCT 
             rp.id_socio as id_tutor,
             rp.nombre,
@@ -647,7 +638,7 @@ BEGIN
       AND dl.nro_socio NOT IN (SELECT nro_socio FROM #Errores WHERE nro_socio IS NOT NULL)
       AND EXISTS (SELECT 1 FROM eSocios.Tutor t WHERE t.id_tutor = dl.nro_socio_rp);
     
-    -- MOSTRAR RESULTADOS
+    -- RESULTADOS
     DECLARE @TotalProcesados INT, @TotalInsertados INT, @TotalErrores INT;
     
     SELECT @TotalProcesados = COUNT(*) FROM #DatosLimpios;
@@ -694,7 +685,6 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
         
-        -- Crear tabla temporal para importación
         IF OBJECT_ID('tempdb..#ImportacionSocios') IS NOT NULL
             DROP TABLE #ImportacionSocios;
         
@@ -706,7 +696,6 @@ BEGIN
             medio_pago VARCHAR(50)
         );
         
-        -- Importar datos desde Excel
         DECLARE @SQL NVARCHAR(MAX);
         SET @SQL = '
         INSERT INTO #ImportacionSocios 
@@ -718,23 +707,24 @@ BEGIN
         
         EXEC sp_executesql @SQL;
         
-        -- Limpiar y validar datos importados
+        -- limpiar y validar datos importados
         DELETE FROM #ImportacionSocios WHERE id_pago IS NULL OR valor <= 0;
         
-        -- Eliminar registros de socios que no existen en la base de datos
+        -- eliminar registros de socios que no existen en la bd
         DELETE i FROM #ImportacionSocios i 
         LEFT JOIN eSocios.Socio s ON i.id_socio = s.id_socio 
         WHERE s.id_socio IS NULL;
         
-        -- Mostrar cuántos registros se eliminaron por socios inexistentes
+        -- mostrar cuántos registros se eliminaron por socios inexistentes
         DECLARE @RegistrosEliminados INT = @@ROWCOUNT;
         IF @RegistrosEliminados > 0
         BEGIN
             PRINT 'Se eliminaron ' + CAST(@RegistrosEliminados AS VARCHAR(10)) + ' registros por socios no encontrados en la base de datos';
         END
         
-        -- Crear facturas para cada pago (una factura por pago)
-        INSERT INTO eCobros.Factura (
+        -- crear facturas para cada pago (una x pago)
+        INSERT INTO eCobros.Factura 
+		(
             id_socio, 
             fecha_emision, 
             fecha_venc_1, 
@@ -747,15 +737,15 @@ BEGIN
         SELECT DISTINCT
             i.id_socio,
             i.fecha as fecha_emision,
-            DATEADD(DAY, 5, i.fecha) as fecha_venc_1,  -- Vencimiento a 30 días
-            DATEADD(DAY, 10, i.fecha) as fecha_venc_2,  -- Segundo vencimiento a 60 días
-            'pagada' as estado,  -- Como ya tenemos el pago, la factura está pagada
+            DATEADD(DAY, 5, i.fecha) as fecha_venc_1,  -- vencimiento a 30 días
+            DATEADD(DAY, 10, i.fecha) as fecha_venc_2,  -- segundo vencimiento a 60 días
+            'pagada' as estado,  -- ya tenemos el pago, entonces la factura está pagada
             i.valor as total,
-            0 as recargo_venc,  -- Sin recargo
-            0 as descuentos     -- Sin descuentos
+            0 as recargo_venc,  -- sin recargo
+            0 as descuentos     -- sin descuentos
         FROM #ImportacionSocios i;
         
-        -- Crear tabla temporal para mapear facturas con pagos
+        -- crear tabla temporal para facturas con pagos
         CREATE TABLE #MapeoFacturas (
             id_pago BIGINT,
             id_factura INT,
@@ -765,7 +755,6 @@ BEGIN
             medio_pago VARCHAR(50)
         );
         
-        -- Obtener el mapeo de facturas recién creadas
         INSERT INTO #MapeoFacturas
         SELECT 
             i.id_pago,
@@ -782,7 +771,8 @@ BEGIN
             AND f.estado = 'pagada';
         
         -- Insertar pagos
-        INSERT INTO eCobros.Pago (
+        INSERT INTO eCobros.Pago 
+		(
             id_pago,
             id_factura,
             medio_pago,
@@ -807,10 +797,10 @@ BEGIN
             m.valor as monto,
             m.fecha,
             'completado' as estado,
-            0 as debito_auto  -- Asumimos que no es débito automático
+            0 as debito_auto  -- asumimos que no es débito automático
         FROM #MapeoFacturas m;
         
-        -- Mostrar resumen de la importación
+        -- mostrar resumen de la importación
         SELECT 
             COUNT(*) as TotalRegistrosProcesados,
             COUNT(DISTINCT id_socio) as TotalSociosAfectados,
@@ -818,7 +808,7 @@ BEGIN
             @RegistrosEliminados as RegistrosEliminadosPorSocioInexistente
         FROM #ImportacionSocios;
         
-        -- Limpiar tablas temporales
+        -- limpiar tablas temporales
         DROP TABLE #ImportacionSocios;
         DROP TABLE #MapeoFacturas;
         
@@ -831,7 +821,7 @@ BEGIN
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
             
-        -- Limpiar tablas temporales en caso de error
+        -- limpiar tablas temporales en caso de error
         IF OBJECT_ID('tempdb..#ImportacionSocios') IS NOT NULL
             DROP TABLE #ImportacionSocios;
         IF OBJECT_ID('tempdb..#MapeoFacturas') IS NOT NULL
@@ -843,7 +833,7 @@ BEGIN
         
         RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
     END CATCH
-END --bien 
+END 
 GO
 
 
@@ -856,17 +846,18 @@ AS
 BEGIN
     SET NOCOUNT ON;
     
-    -- Tabla temporal para almacenar los datos del Excel
-    CREATE TABLE #ImportacionActividades (
+    CREATE TABLE #ImportacionActividades 
+	(
         nro_socio VARCHAR(20),
         actividad NVARCHAR(50),
-        fecha_asistencia VARCHAR(20), -- Como string inicialmente para manejar formatos
+        fecha_asistencia VARCHAR(20), -- Como string para manejar formatos
         asistencia VARCHAR(5),
         profesor VARCHAR(20)
     );
     
     -- Tabla temporal para datos procesados
-    CREATE TABLE #DatosProcesados (
+    CREATE TABLE #DatosProcesados 
+	(
         id_socio VARCHAR(20),
         id_actividad INT,
         fecha_asistencia DATE,
@@ -887,13 +878,13 @@ BEGIN
         
         EXEC sp_executesql @SQL;
         
-        -- Procesar y validar los datos
+        -- procesar y validar los datos
         INSERT INTO #DatosProcesados (id_socio, id_actividad, fecha_asistencia, asistencia, profesor)
         SELECT 
             i.nro_socio,
             a.id_actividad,
             CASE 
-                -- Intentar convertir la fecha desde diferentes formatos
+                -- convertir la fecha desde diferentes formatos
                 WHEN ISDATE(i.fecha_asistencia) = 1 THEN CONVERT(DATE, i.fecha_asistencia)
                 WHEN ISDATE(REPLACE(i.fecha_asistencia, '/', '-')) = 1 THEN CONVERT(DATE, REPLACE(i.fecha_asistencia, '/', '-'))
                 ELSE NULL
@@ -908,7 +899,7 @@ BEGIN
           AND i.fecha_asistencia IS NOT NULL
           AND ISDATE(i.fecha_asistencia) = 1;
         
-        -- Insertar datos válidos en la tabla final
+        -- insertar datos válidos en la tabla final
         INSERT INTO eSocios.Presentismo (id_socio, id_actividad, fecha_asistencia, asistencia, profesor)
         SELECT 
             id_socio,
@@ -919,7 +910,7 @@ BEGIN
         FROM #DatosProcesados
         WHERE fecha_asistencia IS NOT NULL;
         
-        -- Mostrar estadísticas de la importación
+        -- mostrar estadísticas de la importación
         DECLARE @TotalFilas INT = (SELECT COUNT(*) FROM #ImportacionActividades);
         DECLARE @FilasInsertadas INT = (SELECT COUNT(*) FROM #DatosProcesados WHERE fecha_asistencia IS NOT NULL);
         DECLARE @FilasRechazadas INT = @TotalFilas - @FilasInsertadas;
@@ -929,7 +920,7 @@ BEGIN
         PRINT 'Filas insertadas: ' + CAST(@FilasInsertadas AS VARCHAR(10));
         PRINT 'Filas rechazadas: ' + CAST(@FilasRechazadas AS VARCHAR(10));
         
-        -- Mostrar filas rechazadas para análisis
+        -- mostrar filas rechazadas 
         IF @FilasRechazadas > 0
         BEGIN
             PRINT '';
@@ -963,7 +954,6 @@ BEGIN
         PRINT 'Error durante la importación:';
         PRINT ERROR_MESSAGE();
         
-        -- Re-lanzar el error para manejo externo si es necesario
         THROW;
     END CATCH;
     
@@ -988,8 +978,9 @@ BEGIN
     IF OBJECT_ID('tempdb..#UbicacionTemporal') IS NOT NULL DROP TABLE #UbicacionTemporal;
     IF OBJECT_ID('tempdb..#ClimaTemporal') IS NOT NULL DROP TABLE #ClimaTemporal;
 
-    -- Tabla temporal para ubicación (fila 2)
-    CREATE TABLE #UbicacionTemporal (
+    -- Tabla temporal: ubicación
+    CREATE TABLE #UbicacionTemporal 
+	(
         latitud NVARCHAR(50),
         longitud NVARCHAR(50),
         elevacion NVARCHAR(50),
@@ -998,8 +989,9 @@ BEGIN
         timezone_abbreviation NVARCHAR(50)
     );
 
-    -- Tabla temporal para datos climáticos (desde fila 4)
-    CREATE TABLE #ClimaTemporal (
+    -- Tabla temporal: datos climáticos
+    CREATE TABLE #ClimaTemporal 
+	(
         Fecha NVARCHAR(50),
         Temperatura NVARCHAR(50),
         Lluvia NVARCHAR(50),
@@ -1010,7 +1002,7 @@ BEGIN
     BEGIN TRY
         DECLARE @sql NVARCHAR(MAX);
 
-        -- Importar ubicación (fila 2)
+        -- Importar ubicación 
         SET @sql = '
         BULK INSERT #UbicacionTemporal
         FROM ''' + @RutaArchivo + '''
@@ -1023,7 +1015,7 @@ BEGIN
         );';
         EXEC sp_executesql @sql;
 
-        -- Importar clima (desde fila 4)
+        -- Importar clima 
         SET @sql = '
         BULK INSERT #ClimaTemporal
         FROM ''' + @RutaArchivo + '''
@@ -1035,10 +1027,8 @@ BEGIN
         );';
         EXEC sp_executesql @sql;
 
-        -- Iniciar transacción
         BEGIN TRANSACTION;
 
-        -- Buscar ubicación existente con los mismos datos y mismo nombre
         DECLARE @ubicacion_id INT;
 
         SELECT TOP 1 @ubicacion_id = u.id
@@ -1052,10 +1042,11 @@ BEGIN
             ISNULL(u.timezone_abbreviation, '') = ISNULL(t.timezone_abbreviation, '') AND
             ISNULL(u.nombre_ubicacion, '') = @NombreUbicacion;
 
-        -- Si no existe, insertarla
+        -- si no existe la ubicacion insertarla
         IF @ubicacion_id IS NULL
         BEGIN
-            INSERT INTO eSocios.ubicaciones (
+            INSERT INTO eSocios.ubicaciones 
+			(
                 latitud,
                 longitud,
                 elevacion,
@@ -1078,7 +1069,8 @@ BEGIN
         END
 
         -- Insertar datos meteorológicos
-        INSERT INTO eSocios.datos_meteorologicos (
+        INSERT INTO eSocios.datos_meteorologicos 
+		(
             ubicacion_id,
             fecha_hora,
             temperatura_2m,

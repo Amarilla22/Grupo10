@@ -3,7 +3,7 @@
   <Items>
     <LogicalFolder Name="Connections" Type="2" Sorted="true">
       <Items>
-        <ConnectionNode Name="LocalSQLServer">
+        <ConnectionNode Name="(local):DESKTOP-T4T2FOL\Pc">
           <Created>2025-05-23T00:07:46.1275771-03:00</Created>
           <Type>SQL</Type>
           <Server>(local)</Server>
@@ -11,8 +11,18 @@
           <Authentication>Windows Authentication</Authentication>
           <InitialDB />
           <LoginTimeout>30</LoginTimeout>
-          <TrustServerCertificate>False</TrustServerCertificate>
-          <EncryptionOption>True</EncryptionOption>
+          <ExecutionTimeout>0</ExecutionTimeout>
+          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
+          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
+        </ConnectionNode>
+        <ConnectionNode Name="DESKTOP-T4T2FOL\SQLEXPRESS01:DESKTOP-T4T2FOL\Pc">
+          <Created>2025-07-04T09:59:44.9856023-03:00</Created>
+          <Type>SQL</Type>
+          <Server>DESKTOP-T4T2FOL\SQLEXPRESS01</Server>
+          <UserName />
+          <Authentication>Windows Authentication</Authentication>
+          <InitialDB />
+          <LoginTimeout>30</LoginTimeout>
           <ExecutionTimeout>0</ExecutionTimeout>
           <ConnectionProtocol>NotSpecified</ConnectionProtocol>
           <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
@@ -22,56 +32,56 @@
     <LogicalFolder Name="Queries" Type="0" Sorted="true">
       <Items>
         <FileNode Name="00_CreacionObjetos.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>00_CreacionObjetos.sql</FullPath>
         </FileNode>
         <FileNode Name="01_CreacionSP.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>01_CreacionSP.sql</FullPath>
         </FileNode>
         <FileNode Name="02_Prueba_Socios.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>02_Prueba_Socios.sql</FullPath>
         </FileNode>
         <FileNode Name="03_Prueba_ActividadesYCategorias.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>03_Prueba_ActividadesYCategorias.sql</FullPath>
         </FileNode>
         <FileNode Name="04_Prueba_eCobros.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>04_Prueba_eCobros.sql</FullPath>
         </FileNode>
         <FileNode Name="05_Importacion.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>05_Importacion.sql</FullPath>
         </FileNode>
         <FileNode Name="06_Reportes.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>06_Reportes.sql</FullPath>
         </FileNode>
         <FileNode Name="07_Roles.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>07_Roles.sql</FullPath>
         </FileNode>
         <FileNode Name="08_CreacionUsersYTest.sql">
-          <AssociatedConnectionMoniker />
-          <AssociatedConnSrvName />
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:DESKTOP-T4T2FOL\SQLEXPRESS01:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>DESKTOP-T4T2FOL\SQLEXPRESS01</AssociatedConnSrvName>
           <AssociatedConnUserName />
           <FullPath>08_CreacionUsersYTest.sql</FullPath>
         </FileNode>

@@ -18,15 +18,15 @@ BEGIN
 
     WHILE @i <= 300
     BEGIN
-        -- 1. Socio activo al azar
+        -- socio activo al azar
         SELECT TOP 1 @id_socio = id_socio FROM eSocios.Socio WHERE activo = 1 ORDER BY NEWID();
 
-        -- 2. Fechas
+        -- fechas
         SET @fecha_emision = DATEADD(DAY, ABS(CHECKSUM(NEWID())) % 730, '2023-01-01');
         SET @fecha_venc_1 = DATEADD(DAY, 5, @fecha_emision);
         SET @fecha_venc_2 = DATEADD(DAY, 5, @fecha_venc_1);
 
-        -- 3. Estado aleatorio
+        -- estado aleatorio
         DECLARE @estado_aleatorio INT = ABS(CHECKSUM(NEWID())) % 100;
         IF @estado_aleatorio < 70
             SET @estado_factura = 'pagada';
@@ -35,7 +35,7 @@ BEGIN
         ELSE
             SET @estado_factura = 'anulada';
 
-        -- 4. Seleccionar actividades sin filtrar por vigencia
+        -- seleccionar actividades sin filtrar x vigencia
         DECLARE @cantidad_items INT = 1 + ABS(CHECKSUM(NEWID())) % 3;
         DECLARE @actividad TABLE (
             id_actividad INT,
@@ -48,7 +48,7 @@ BEGIN
         FROM eSocios.Actividad
         ORDER BY NEWID();
 
-        -- 5. Calcular total solo si hay actividades
+        -- calcular total (si hay actividades)
         IF EXISTS (SELECT 1 FROM @actividad)
         BEGIN
             SELECT @total_factura = SUM(costo) FROM @actividad;
@@ -64,7 +64,7 @@ BEGIN
 
             DECLARE @id_factura INT = SCOPE_IDENTITY();
 
-            -- 6. Insertar ítems (sin campo periodo)
+            -- insertar items 
             INSERT INTO eCobros.ItemFactura (id_factura, concepto, monto)
             SELECT 
                 @id_factura,
@@ -72,7 +72,7 @@ BEGIN
                 costo
             FROM @actividad;
 
-            -- 7. Insertar pagos si corresponde
+            -- insertar pagos si corresponde
             IF @estado_factura = 'pagada'
             BEGIN
                 DECLARE @monto_pagado DECIMAL(10,2);
@@ -129,7 +129,7 @@ GO
 CREATE OR ALTER PROCEDURE eReportes.MorososRecurrentes
     @FechaInicio DATE,
     @FechaFin DATE,
-    @MinFallos INT = 2  -- Mínimo número de fallos para incluir en el ranking
+    @MinFallos INT = 2  -- minimo nro de fallos para incluir en el ranking
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -147,7 +147,7 @@ BEGIN
         RETURN;
     END
     
-    -- Mostrar información del reporte
+    -- Mostrar info del reporte
     PRINT '*** RANKING DE SOCIOS CON FALLOS DE PAGO ***';
     PRINT 'Período: ' + FORMAT(@FechaInicio, 'dd/MM/yyyy') + ' al ' + FORMAT(@FechaFin, 'dd/MM/yyyy');
     PRINT 'Mínimo fallos requeridos: ' + CAST(@MinFallos AS VARCHAR(10));
@@ -156,7 +156,8 @@ BEGIN
     PRINT '';
     
     -- RESULTADO PRINCIPAL DEL REPORTE
-    WITH FacturasConPagos AS (
+    WITH FacturasConPagos AS 
+	(
         SELECT 
             f.id_factura,
             f.id_socio,
@@ -196,7 +197,8 @@ BEGIN
             AND fecha_ultimo_pago IS NOT NULL
     ),
     
-    FallosPago AS (
+    FallosPago AS 
+	(
         SELECT 
             id_factura,
             id_socio,
@@ -219,7 +221,8 @@ BEGIN
         FROM FacturasPagadasCompletas
     ),
     
-    ResumenPorSocio AS (
+    ResumenPorSocio AS 
+	(
         SELECT 
             fp.id_socio,
             s.nombre,
@@ -235,7 +238,8 @@ BEGIN
         HAVING SUM(fp.es_fallo) >= @MinFallos
     ),
     
-    RankingFinal AS (
+    RankingFinal AS 
+	(
         SELECT 
             id_socio,
             nombre,
@@ -266,7 +270,7 @@ GO
 
 
 CREATE OR ALTER PROCEDURE eReportes.ReporteAcumuladoMensual
-    @Anio INT = NULL -- Parámetro opcional, si no se especifica toma el año actual
+    @Anio INT = NULL 
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -275,8 +279,9 @@ BEGIN
     IF @Anio IS NULL
         SET @Anio = YEAR(GETDATE());
     
-    -- Obtener los datos base con los meses como números
-    WITH DatosBase AS (
+    -- Obtener los datos base con los meses
+    WITH DatosBase AS 
+	(
         SELECT 
             itf.concepto AS Actividad,
             MONTH(f.fecha_emision) AS Mes,
@@ -288,8 +293,9 @@ BEGIN
             AND f.fecha_emision <= GETDATE()
         GROUP BY itf.concepto, MONTH(f.fecha_emision)
     ),
-    -- Aplicar PIVOT para convertir meses en columnas
-    ReportePivot AS (
+    -- pivot para convertir meses en columnas
+    ReportePivot AS 
+	(
         SELECT 
             Actividad,
             ISNULL([1], 0) AS Enero,
@@ -310,7 +316,7 @@ BEGIN
             FOR Mes IN ([1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12])
         ) AS PivotTable
     )
-    -- Resultado final con formato de moneda y total
+    -- Resultado
     SELECT 
         Actividad,
         FORMAT(Enero, 'C', 'es-AR') AS Enero,

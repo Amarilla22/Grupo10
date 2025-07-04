@@ -133,7 +133,7 @@ GO
 EXEC eAdministrativos.crearUsuario 
     @rol = 'JefeTesoreria',
     @nombre_usuario = 'test_password_corta',
-    @clave = 'Pass1!', -- Muy corta
+    @clave = 'Pass1!', -- (muy corta)
     @vigencia_dias = 90;
 GO
 

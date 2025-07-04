@@ -1,6 +1,6 @@
 /*
 Entrega 7 - Roles y permisos.
-Fecha de entrega: 27/06/2025
+Fecha de entrega: 04/07/2025
 Nro. Comision: 5600
 Grupo: 10
 Materia: Bases de datos aplicada
@@ -45,6 +45,7 @@ GRANT SELECT ON SCHEMA::eReportes TO JefeTesoreria;
 
 --Permisos para ejecución sobre SPs
 GRANT EXECUTE ON SCHEMA::eReportes TO JefeTesoreria;
+
 GO
 
 
@@ -75,7 +76,6 @@ GRANT EXECUTE ON OBJECT::eImportacion.ImportarTarifasCategorias TO Administrativ
 GRANT EXECUTE ON OBJECT::eImportacion.ImportarTarifasPrecioPileta TO AdministrativoCobranza;
 GRANT EXECUTE ON OBJECT::eImportacion.ImportarResponsablesDePago TO AdministrativoCobranza;
 GRANT EXECUTE ON OBJECT::eImportacion.ImportarPagoCuotas TO AdministrativoCobranza;
-GRANT EXECUTE ON OBJECT::eImportacion.ImportarDatosClima TO AdministrativoSocio;
 GO
 
 -- ====================================================================
@@ -91,7 +91,7 @@ GRANT SELECT ON eCobros.Pago TO AdministrativoMorosidad;
 GRANT SELECT ON eSocios.Socio TO AdministrativoMorosidad; -- Necesita ver info de socios
 
 -- Permisos de ejecución sobre SPs
- GRANT EXECUTE ON OBJECT::eCobros.verificarVencimiento TO AdministrativoMorosidad;
+GRANT EXECUTE ON OBJECT::eCobros.verificarVencimiento TO AdministrativoMorosidad;
 GO
 
 -- ====================================================================
@@ -150,6 +150,7 @@ GRANT EXECUTE ON OBJECT::eSocios.desinscribirActividad TO AdministrativoSocio;
 GRANT EXECUTE ON OBJECT::eSocios.registrarPresentismo TO AdministrativoSocio;
 GRANT EXECUTE ON OBJECT::eImportacion.ImportarGrupoFamiliar TO AdministrativoSocio;
 GRANT EXECUTE ON OBJECT::eImportacion.ImportarPresentismo TO AdministrativoSocio;
+GRANT EXECUTE ON OBJECT::eImportacion.ImportarDatosClima TO AdministrativoSocio;
 GO
 
 
@@ -159,10 +160,8 @@ GO
 --Propósito: Acceso restringido a sus propios datos a través de la aplicación web.
 -- ====================================================================
 
--- NOTA IMPORTANTE: La restricción a "sus propios datos" DEBE ser manejada
--- LÓGICAMENTE dentro de los Stored Procedures o Vistas que este rol ejecute.
--- A nivel de GRANT, solo podemos dar permiso sobre el objeto completo.
--- Permisos de lectura en tablas (solo para consulta de sus propios datos, la App filtrar?)
+
+-- Permisos de lectura en tablas (solo para consulta de sus propios datos, la App filtrar)
 GRANT SELECT ON eSocios.Socio TO SociosWeb;
 GRANT SELECT ON eSocios.GrupoFamiliar TO SociosWeb;
 GRANT SELECT ON eCobros.Factura TO SociosWeb;
@@ -172,11 +171,7 @@ GRANT SELECT ON eCobros.PreciosAcceso TO SociosWeb;
 GRANT SELECT ON eSocios.Actividad TO SociosWeb;
 GRANT SELECT ON eSocios.Categoria TO SociosWeb;
 
--- Permisos de ejecución sobre SPs específicos para el socio web.
--- EJEMPLO: Si tienes un SP llamado eSocios.ConsultarDatosSocio(@id_socio),
--- este SP debería internamente usar el ID del socio logueado para filtrar.
--- GRANT EXECUTE ON OBJECT::eSocios.ConsultarMisCuotas TO SociosWeb;
--- GRANT EXECUTE ON OBJECT::eSocios.AgregarFamiliarWeb TO SociosWeb; -- Si hay un SP para esto con validaci?n interna
+
 GO
 
 -- ====================================================================
@@ -206,6 +201,7 @@ GO
 --Área: Autoridades
 --Propósito: Consulta de datos administrativos y algunos operativos.
 -- ====================================================================
+
 GRANT SELECT ON eSocios.Socio TO Secretario;
 GRANT SELECT ON eSocios.Actividad TO Secretario;
 GRANT SELECT ON eCobros.Factura TO Secretario;
@@ -218,9 +214,11 @@ GO
 --Área: Autoridades
 --Propósito: Acceso de lectura a alto nivel, principalmente para reportes agregados.
 -- ====================================================================
+
 GRANT SELECT ON eSocios.Categoria TO Vocales;
 GRANT SELECT ON eSocios.Actividad TO Vocales;
 GRANT SELECT ON eCobros.Factura TO Vocales; -- Acceso de lectura, pero el uso real sería para reportes agregados.
 -- Si hay vistas de resumen, sería ideal dar permisos sobre ellas.
--- GRANT SELECT ON OBJECT::eReportes.VistaResumenSocios TO Vocales;
+GRANT EXECUTE ON SCHEMA::eReportes TO Vocales;
+
 GO

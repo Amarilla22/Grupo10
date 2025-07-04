@@ -264,7 +264,6 @@ END
 GO
 
 
-
 --agrega los datos de un tutor
 CREATE OR ALTER PROCEDURE eSocios.agregarTutor
     @id_tutor VARCHAR(20),
@@ -399,7 +398,6 @@ BEGIN
     END CATCH
 END
 GO
-
 
 
 -- agrega un socio a un grupo familiar
@@ -542,7 +540,6 @@ END
 GO
 
 
-
 -- agrega los datos de una actividad
 CREATE OR ALTER PROCEDURE eSocios.agregarCategoria
     @nombre VARCHAR(50),
@@ -577,6 +574,7 @@ BEGIN
     END CATCH
 END
 GO
+
 
 -- modifica los datos de una categoria
 CREATE OR ALTER PROCEDURE eSocios.modificarCategoria
@@ -628,6 +626,7 @@ BEGIN
 END
 GO
 
+
 -- modifica los datos de una categoria
 CREATE OR ALTER PROCEDURE eSocios.eliminarCategoria
     @id_categoria INT
@@ -667,7 +666,6 @@ END
 GO
 
 
-
 -- crea una actividad
 CREATE OR ALTER PROCEDURE eSocios.crearActividad
     @nombre NVARCHAR(50),
@@ -701,6 +699,7 @@ BEGIN
     END CATCH
 END
 GO
+
 
 -- modifica nombre, precio y vigencia de una actividad
 CREATE OR ALTER PROCEDURE eSocios.modificarActividad
@@ -744,6 +743,7 @@ BEGIN
     END CATCH
 END
 GO
+
 
 -- elimina una actividad
 CREATE OR ALTER PROCEDURE eSocios.eliminarActividad
@@ -808,6 +808,7 @@ BEGIN
 END
 GO
 
+
 -- establece horarios para una actividad
 CREATE OR ALTER PROCEDURE eSocios.agregarHorarioActividad
     @id_actividad INT,
@@ -859,6 +860,7 @@ BEGIN
 END
 GO
 
+
 CREATE OR ALTER PROCEDURE eSocios.eliminarHorarioActividad
     @id_actividad INT,
     @dia VARCHAR(20),
@@ -898,8 +900,8 @@ END
 GO
 
 
-
---verifica que exista un socio con el ID dado y luego de eso le asigna la actividad indicada por ID en la tabla Realiza
+--verifica que exista un socio con el ID dado y luego de eso le asigna 
+--la actividad indicada por ID en la tabla Realiza
 CREATE OR ALTER PROCEDURE eSocios.inscribirActividad
     @id_socio VARCHAR(20),
     @id_actividad INT
@@ -952,6 +954,7 @@ BEGIN
 END
 GO
 
+
 -- elimina a un socio de una actividad
 CREATE OR ALTER PROCEDURE eSocios.desinscribirActividad
     @id_socio VARCHAR(20),
@@ -982,6 +985,8 @@ BEGIN
     END CATCH
 END
 GO
+
+
 -- registra presentismo de un socio a una actividad
 CREATE OR ALTER PROCEDURE eSocios.registrarPresentismo
     @id_socio VARCHAR(20),
@@ -1046,8 +1051,6 @@ BEGIN
     END CATCH
 END
 GO
-
-
 
 
 -- SP para generar factura mensual con el total de actividades y membresia 
@@ -1177,7 +1180,9 @@ BEGIN
 END;
 GO
 
--- si se paso del primer vencimiento aplica recargo, si se paso del segundo vencimiento inhabilita al socio
+
+-- si se paso del primer vencimiento aplica recargo, si se paso del segundo 
+-- vencimiento inhabilita al socio
 CREATE OR ALTER PROCEDURE eCobros.verificarVencimiento
     @id_factura INT
 AS
@@ -1282,6 +1287,7 @@ BEGIN
 END;
 GO
 
+
 --borrado logico para factura
 CREATE OR ALTER PROCEDURE eCobros.anularFactura
     @id_factura INT
@@ -1312,7 +1318,6 @@ END;
 GO
 
 
-
 --registra una entrada a la pileta y se ascocia a una factura
 CREATE OR ALTER PROCEDURE eCobros.registrarEntradaPileta
     @id_socio VARCHAR(20),
@@ -1325,7 +1330,10 @@ BEGIN
     SET NOCOUNT ON;
 
     -- validaciones 
-    IF NOT EXISTS (SELECT 1 FROM eSocios.Socio WHERE id_socio = @id_socio)
+    IF NOT EXISTS (
+		SELECT 1 FROM eSocios.Socio 
+		WHERE id_socio = @id_socio
+	)
     BEGIN
         PRINT 'Error: El socio especificado no existe.';
         RETURN;
@@ -1444,6 +1452,8 @@ BEGIN
     END CATCH
 END;
 GO
+
+
 --elimina el item de una factura
 CREATE OR ALTER PROCEDURE eCobros.eliminarItemFactura
     @id_item INT
@@ -1504,7 +1514,6 @@ BEGIN
     END CATCH
 END;
 GO
-
 
 
 --genera un pago asociado a una factura
@@ -1619,6 +1628,7 @@ BEGIN
 END;
 GO
 
+
 --borrado logico de pago
 CREATE OR ALTER PROCEDURE eCobros.anularPago 
     @id_pago bigint
@@ -1707,6 +1717,7 @@ BEGIN
     END CATCH
 END
 GO
+
 
 --genera un reembolso para un pago
 CREATE OR ALTER PROCEDURE eCobros.generarReembolso
@@ -1798,6 +1809,7 @@ BEGIN
     END CATCH
 END;
 GO
+
 
 --cancela un reembolso
 CREATE OR ALTER PROCEDURE eCobros.eliminarReembolso
@@ -1939,7 +1951,10 @@ BEGIN
         VALUES (@id_pago, @monto, @motivo, @fecha_reembolso);
 
         -- registra o actualiza saldo del socio
-        IF EXISTS (SELECT 1 FROM eCobros.SaldoSocio WHERE id_socio = @id_socio)
+        IF EXISTS (
+			SELECT 1 FROM eCobros.SaldoSocio 
+			WHERE id_socio = @id_socio
+		)
         BEGIN
             UPDATE eCobros.SaldoSocio
             SET saldo = saldo + @monto
@@ -1970,12 +1985,10 @@ END
 GO
 
 
-
-
 CREATE OR ALTER PROCEDURE eAdministrativos.crearUsuario
 	@rol VARCHAR(50),
 	@nombre_usuario NVARCHAR(50),
-	@clave NVARCHAR(50), --La clave se recibe en texto plano para el hash
+	@clave NVARCHAR(50), --se recibe en texto plano para el hash
 	@vigencia_dias INT = 90
 AS
 BEGIN
@@ -2011,9 +2024,7 @@ BEGIN
 			DATEADD(DAY, @vigencia_dias, GETDATE()), GETDATE()
 		);
 
-		-- Crear LOGIN a nivel servidor
-		--Se utiliza la clave en texto plano para crear el LOGIN, ya que SQL Server
-		--gestionará el hash interno para el LOGIN del servidor.
+		--Crear LOGIN a nivel servidor
 		--Se establece la base de datos 'Com5600G10' como default para este login
 		DECLARE @sql_login NVARCHAR(MAX);
 		DECLARE @db_name SYSNAME = 'Com5600G10';
@@ -2054,11 +2065,12 @@ BEGIN
 END;
 GO
 
+
 CREATE OR ALTER PROCEDURE eAdministrativos.modificarUsuario
 	@id_usuario INT,
-	@nuevo_rol VARCHAR(50) = NULL, --opcional
-	@nuevo_nombre_usuario NVARCHAR(50) = NULL, --opcional
-	@nueva_clave NVARCHAR (50) = NULL, --opcional
+	@nuevo_rol VARCHAR(50) = NULL, --(opcional)
+	@nuevo_nombre_usuario NVARCHAR(50) = NULL, --(opcional)
+	@nueva_clave NVARCHAR (50) = NULL, --(opcional)
 	@vigencia_dias INT = NULL
 AS
 BEGIN
@@ -2066,13 +2078,16 @@ BEGIN
 
 	BEGIN TRY
 		--Validacion existencia
-		IF NOT EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario)
+		IF NOT EXISTS (
+			SELECT 1 FROM eAdministrativos.UsuarioAdministrativo 
+			WHERE id_usuario = @id_usuario
+		)
 			THROW 50001, 'No existe usuario con ese ID.', 1;
 		
 		--Obtener datos actuales del usuario
 		DECLARE @rol_actual VARCHAR(50);
 		DECLARE @nombre_usuario_actual NVARCHAR(50);
-		DECLARE @clave_hash_actual VARBINARY(32); -- Para comparar hashes
+		DECLARE @clave_hash_actual VARBINARY(32); 
 		DECLARE @fecha_vigencia_clave_actual DATE;
 		
 		SELECT
@@ -2106,7 +2121,7 @@ BEGIN
 				THROW 50004, 'La contraseña debe tener al menos 8 caracteres, incluyendo mayúsculas, minúsculas, números y símbolos.', 1;
 		END
 		
-		--Validar que el nuevo Rol exista como ROLE en la DB
+		--Validar que el nuevo Rol exista como ROLE en la bd
 		IF @nuevo_rol IS NOT NULL
 		BEGIN
 			IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @nuevo_rol AND type = 'R')
@@ -2192,7 +2207,10 @@ BEGIN
 
 	BEGIN TRY
 	--Validar existencia usuario
-		IF NOT EXISTS (SELECT 1 FROM eAdministrativos.UsuarioAdministrativo WHERE id_usuario = @id_usuario)
+		IF NOT EXISTS (
+			SELECT 1 FROM eAdministrativos.UsuarioAdministrativo 
+			WHERE id_usuario = @id_usuario
+		)
 			THROW 50001, 'El usuario no existe.', 1;
 
 		--Obtener nombre de usuario y el rol
@@ -2207,8 +2225,8 @@ BEGIN
 		DELETE FROM eAdministrativos.UsuarioAdministrativo
 		WHERE id_usuario = @id_usuario
 
-		-- Remover el USER de la base de datos de su rol (si no es 'public')
-		-- Es importante quitarlo del rol antes de eliminar el USER si no es el rol 'public'
+		-- Remover el USER de la bd de su rol 
+
 			IF @rol_asociado IS NOT NULL AND @rol_asociado <> 'public' AND EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @rol_asociado AND type = 'R')
 			BEGIN
 				DECLARE @sql_drop_role_member NVARCHAR(MAX) = 'ALTER ROLE [' + @rol_asociado + '] DROP MEMBER [' + @nombre_usuario + '];';
